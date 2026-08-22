@@ -19,7 +19,7 @@ BIN_DIR="$HOME/.local/bin"
 DESKTOP_DIR="$HOME/.local/share/applications"
 CONFIG_DIR="$HOME/.config/pi-menu"
 
-COMMANDS=(pi-menu pi-life pi-imgshow)
+COMMANDS=(pi-menu pi-life pi-imgshow pi-menu-doctor pi-menu-flash)
 DESKTOP_FILES=(pi-menu.desktop pi-life.desktop pi-imgshow.desktop)
 
 PROMPT=1
@@ -220,6 +220,17 @@ install_user_config() {
     fi
 }
 
+offer_to_flash() {
+    # The Pico needs its own copy of the frame server. Skipping this is
+    # the single most common reason the panel stays dark.
+    say "The Stellar Unicorn needs the frame server copied onto it."
+    if confirm "Copy it now over USB?"; then
+        "$VENV/bin/pi-menu-flash" || warn "flashing failed; run pi-menu-flash to retry"
+    else
+        warn "run pi-menu-flash later, or the panel will not light up"
+    fi
+}
+
 refresh_menu() {
     if command -v update-desktop-database >/dev/null 2>&1; then
         update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1 || true
@@ -266,6 +277,7 @@ main() {
     install_user_config
     check_serial_group
     refresh_menu
+    offer_to_flash
 
     say "Done."
     cat <<EOF
@@ -275,12 +287,13 @@ main() {
       pi-menu        the launcher
       pi-life        Conway's Game of Life
       pi-imgshow     the image shower
+      pi-menu-flash  copy the frame server onto the panel
+      pi-menu-doctor check the link to the panel, layer by layer
 
   Edit $CONFIG_DIR/apps.json to add your own programs to the menu.
 
-  Do not forget the panel itself: copy
-  firmware/stellar_frame_server.py onto the Stellar Unicorn as main.py.
-  Without it the apps fall back to the terminal preview.
+  If the panel stays dark, run pi-menu-doctor. It names the layer that
+  broke instead of leaving you guessing.
 EOF
 }
 

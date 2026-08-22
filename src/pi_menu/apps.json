@@ -32,6 +32,17 @@
         "pi_menu.doctor"
       ],
       "hold": "always"
+    },
+    {
+      "id": "flash",
+      "name": "Flash Panel Firmware",
+      "description": "Copy the frame server onto the Stellar Unicorn's Pico over USB. Run this once when setting up, and again after updating pi-menu.",
+      "command": [
+        "{python}",
+        "-m",
+        "pi_menu.flash"
+      ],
+      "hold": "always"
     }
   ]
 }

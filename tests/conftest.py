@@ -1,6 +1,6 @@
 """Shared harness: the real Pico firmware, driven over a pseudo-terminal.
 
-``firmware/stellar_frame_server.py`` is imported with the Pimoroni
+``pi_menu/firmware/stellar_frame_server.py`` is imported with the Pimoroni
 modules stubbed and run in a thread, with a pty standing in for the USB
 link. Anything that opens the resulting serial path is talking to the
 actual firmware code, so the Pi and Pico halves are always tested
@@ -18,7 +18,13 @@ from pathlib import Path
 
 import pytest
 
-FIRMWARE = Path(__file__).resolve().parents[1] / "firmware" / "stellar_frame_server.py"
+FIRMWARE = (
+    Path(__file__).resolve().parents[1]
+    / "src"
+    / "pi_menu"
+    / "firmware"
+    / "stellar_frame_server.py"
+)
 
 
 class FakeGraphics:
@@ -171,6 +177,8 @@ def pico():
             firmware.run()
         except (OSError, ValueError, IndexError):
             pass  # the link went away at teardown
+        except SystemExit:
+            pass  # the host asked the server to quit for a re-flash
 
     thread = threading.Thread(target=serve, daemon=True)
     thread.start()

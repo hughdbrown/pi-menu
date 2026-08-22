@@ -10,6 +10,7 @@ panel) attached over USB:
 | **Game of Life** (`pi-life`) | Conway's Game of Life on the panel, with start/stop/reset/random and a 16×16 grid you draw on. |
 | **Image Shower** (`pi-imgshow`) | Pick an image file and show it on the panel. PNG, JPEG, BMP, WebP and animated GIF. |
 | **Panel Self-Test** (`pi-menu-doctor`) | Checks every layer between the Pi and the LEDs, then lights the panel up. Run this first when the panel stays dark. |
+| **Flash Panel Firmware** (`pi-menu-flash`) | Copies the frame server onto the Stellar Unicorn's Pico over USB. Needs nothing but pyserial. |
 
 Each app opens a window for its controls and mirrors what it is doing onto
 the LED panel. When Pi Menu launches one it does so inside a terminal, so
@@ -53,21 +54,30 @@ running anything with `sudo` — that is only ever `apt-get install python3-tk`
 / `python3-venv` if they are missing, and `usermod -a -G dialout` so you can
 open the serial port.
 
-Then set up the panel itself. Copy the firmware onto the Stellar Unicorn as
-`main.py` so it starts at power-on:
+`install.sh` offers to do the next step for you, and you can run it any time:
 
 ```bash
-mpremote cp firmware/stellar_frame_server.py :main.py
+pi-menu-flash
 ```
 
-(Thonny works too, as does dragging the file across.) The firmware needs the
-Pimoroni MicroPython build, which already includes the `stellar` and
-`picographics` modules. **Power-cycle the panel afterwards**, and re-copy the
-file whenever you update this repo — the Pi refuses to run against firmware
-older than the protocol it expects, and says so.
+That copies `src/pi_menu/firmware/stellar_frame_server.py` onto the Pico as
+`main.py`, reads it back to check it arrived intact, and restarts the board.
+It talks to MicroPython's raw REPL over pyserial, so there is nothing extra to
+install — no `mpremote`, no `ampy`. (Both still work if you prefer them, as
+does dragging the file across in Thonny.)
 
-Note that the frame server disables Ctrl-C (see below), so **hold the A button
-while the panel powers up** if you want a REPL instead of the server.
+Re-run it whenever you update this repo. The Pi refuses to drive firmware
+older than the protocol it expects, and says so rather than misbehaving.
+
+The board needs the Pimoroni MicroPython build, which already includes the
+`stellar` and `picographics` modules.
+
+**One catch worth knowing.** The frame server disables Ctrl-C (see the
+protocol section), so no ordinary tool can interrupt it to replace the file.
+`pi-menu-flash` handles that by asking the running server to step aside over
+the protocol itself. If the board is wedged and even that fails, **hold the A
+button while the panel powers up** — that skips the frame server and leaves
+you a REPL.
 
 To remove everything: `./install.sh --uninstall`.
 
@@ -148,6 +158,7 @@ agree; `tests/test_firmware_link.py` checks that they do.
 | `0x01` blit | 768 bytes RGB, row-major, x fastest | `K\n` |
 | `0x02` brightness | 1 byte, 0–255 | `K\n` |
 | `0x04` clear | — | `K\n` |
+| `0x05` exit | — | `K\n`, then quits to the REPL |
 
 **`0x03` is deliberately absent, and this is the single most important thing
 about the protocol.** MicroPython's USB serial driver reads `0x03` as Ctrl-C:
@@ -186,8 +197,11 @@ effect yet — `id -nG | grep dialout`, and log out and back in if it is missing
 
 **It worked once and then stopped until I power-cycled the Pico.** That is
 firmware from before the `kbd_intr` fix: the clear sent when an app exited was
-byte `0x03`, which killed the frame server. Re-copy
-`firmware/stellar_frame_server.py` onto the Pico as `main.py`.
+byte `0x03`, which killed the frame server. Run `pi-menu-flash`.
+
+**`pi-menu-flash` cannot get the board into its REPL.** Hold the **A button**
+while power-cycling the panel, then run it again. Ctrl-C is disabled while the
+frame server runs, so the A button is the reliable way in.
 
 **Nothing appears in the Raspberry Pi menu.** Log out and back in, or run
 `lxpanelctl restart`. The entries are in `~/.local/share/applications`.

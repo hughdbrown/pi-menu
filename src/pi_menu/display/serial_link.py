@@ -92,7 +92,7 @@ class SerialDisplay(Display):
             raise StellarUnicornNotFound(
                 f"{self._port_name} did not answer as a Stellar Unicorn "
                 f"(last reply: {self._last_reply!r}); copy "
-                "firmware/stellar_frame_server.py onto the Pico as main.py"
+                "the firmware onto the Pico by running pi-menu-flash"
             )
 
         super().__init__(brightness=brightness)

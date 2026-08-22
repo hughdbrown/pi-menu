@@ -189,8 +189,8 @@ def interpret_reply(reply: bytes) -> str:
     if ">>>" in text or "Traceback" in text or "MicroPython" in text:
         return (
             f"The Pico answered from its REPL, not the frame server: {text!r}\n"
-            "main.py is not running. Copy firmware/stellar_frame_server.py onto\n"
-            "the Pico as main.py and power-cycle it."
+            "main.py is not running. Run pi-menu-flash to install it, then\n"
+            "power-cycle the panel."
         )
     return f"Unrecognised reply: {reply!r}"
 
@@ -209,7 +209,7 @@ def check_handshake(path: str) -> tuple[list[Result], int | None]:
             Result(
                 WARN,
                 f"{path} runs protocol v{version}, this needs v{proto.PROTOCOL_VERSION}",
-                "Re-copy firmware/stellar_frame_server.py onto the Pico as main.py.\n"
+                "Re-copy the firmware onto the Pico by running pi-menu-flash.\n"
                 "Old firmware is killed by binary frame data partway through.",
             )
         ], version
@@ -268,7 +268,7 @@ def check_frames(path: str) -> list[Result]:
                 FAIL,
                 "the panel stopped responding partway through",
                 f"{exc}\nThis is what stale firmware looks like: re-copy\n"
-                "firmware/stellar_frame_server.py onto the Pico as main.py.",
+                "the firmware onto the Pico by running pi-menu-flash.",
             )
         )
     finally:

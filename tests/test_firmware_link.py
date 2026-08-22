@@ -187,12 +187,9 @@ def test_no_command_byte_is_the_interrupt_character():
 
 def test_the_firmware_disables_the_keyboard_interrupt_at_startup():
     """The one line that keeps binary frames from killing the server."""
-    source = (
-        __import__("pathlib").Path(__file__).resolve().parents[1]
-        / "firmware"
-        / "stellar_frame_server.py"
-    ).read_text()
-    assert "micropython.kbd_intr(-1)" in source
+    from conftest import FIRMWARE
+
+    assert "micropython.kbd_intr(-1)" in FIRMWARE.read_text()
 
 
 def test_holding_the_a_button_offers_an_escape_to_the_repl():
@@ -207,9 +204,7 @@ def test_holding_the_a_button_offers_an_escape_to_the_repl():
 
 
 def test_the_escape_check_happens_before_the_interrupt_is_disabled():
-    source = (
-        __import__("pathlib").Path(__file__).resolve().parents[1]
-        / "firmware"
-        / "stellar_frame_server.py"
-    ).read_text()
+    from conftest import FIRMWARE
+
+    source = FIRMWARE.read_text()
     assert source.index("escape_requested()") < source.index("micropython.kbd_intr(-1)")

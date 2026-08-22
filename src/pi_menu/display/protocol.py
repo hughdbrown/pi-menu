@@ -29,6 +29,10 @@ CMD_BRIGHTNESS = 0x02
 #: the command set means a Pico still running old firmware is merely
 #: confused by a clear rather than killed by it.
 CMD_CLEAR = 0x04
+#: Asks the frame server to restore Ctrl-C and quit to the REPL, so the
+#: board can be re-flashed. Without it, firmware that has disabled the
+#: interrupt character cannot be replaced over USB at all.
+CMD_EXIT = 0x05
 
 #: The Pico answers a ping with HELLO, a space, and its protocol version.
 HELLO = b"STELLAR16"
@@ -51,6 +55,10 @@ def encode_ping() -> bytes:
 
 def encode_clear() -> bytes:
     return MAGIC + bytes([CMD_CLEAR])
+
+
+def encode_exit() -> bytes:
+    return MAGIC + bytes([CMD_EXIT])
 
 
 def encode_brightness(level: int) -> bytes:

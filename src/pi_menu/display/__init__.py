@@ -85,9 +85,8 @@ def open_display(
     if not display.firmware_is_current:
         print(
             f"warning: the Pico is running protocol v{display.firmware_version}, "
-            f"this needs v{PROTOCOL_VERSION}. Re-copy "
-            "firmware/stellar_frame_server.py onto it as main.py, or the panel "
-            "will stop responding partway through.",
+            f"this needs v{PROTOCOL_VERSION}. Run pi-menu-flash to update it, "
+            "or the panel will stop responding partway through.",
             file=sys.stderr,
         )
     return display
@@ -109,7 +108,7 @@ def _announce_fallback(reason: Exception) -> None:
         f"  Reason: {reason}",
         "",
         "  What you see below is a preview, not the panel. To fix it:",
-        "    mpremote cp firmware/stellar_frame_server.py :main.py",
+        "    pi-menu-flash",
         "    ...then power-cycle the panel and run: pi-menu-doctor",
         rule,
         "",

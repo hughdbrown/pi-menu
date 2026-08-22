@@ -162,7 +162,7 @@ def test_the_fallback_shouts_rather_than_murmurs(monkeypatch, capsys):
     try:
         stderr = capsys.readouterr().err
         assert "NO STELLAR UNICORN FOUND" in stderr
-        assert "mpremote cp" in stderr        # tells you how to fix it
+        assert "pi-menu-flash" in stderr      # tells you how to fix it
         assert "pi-menu-doctor" in stderr
         assert "nothing plugged in" in stderr  # and why it happened
     finally:

@@ -19,6 +19,7 @@ dev = ["pytest>=7.0"]
 [project.scripts]
 pi-menu = "pi_menu.launcher:main"
 pi-menu-doctor = "pi_menu.doctor:main"
+pi-menu-flash = "pi_menu.flash:main"
 pi-life = "pi_menu.life.app:main"
 pi-imgshow = "pi_menu.imgshow.app:main"
 

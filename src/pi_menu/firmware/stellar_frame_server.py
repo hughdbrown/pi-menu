@@ -14,6 +14,7 @@ Protocol (see pi_menu/display/protocol.py, which must agree):
     "SU" 0x01 <768 bytes RGB> blit   -> "K\\n"
     "SU" 0x02 <1 byte>        bright -> "K\\n"
     "SU" 0x04                 clear  -> "K\\n"
+    "SU" 0x05                 exit   -> "K\\n", then quits to the REPL
 
 The 768 bytes are row-major RGB, x varying fastest, top-left first.
 
@@ -41,6 +42,7 @@ CMD_PING = 0x00
 CMD_BLIT = 0x01
 CMD_BRIGHTNESS = 0x02
 CMD_CLEAR = 0x04
+CMD_EXIT = 0x05
 
 HELLO = b"STELLAR16 %d\n" % PROTOCOL_VERSION
 ACK = b"K\n"
@@ -118,6 +120,14 @@ def handle(command):
     elif command == CMD_CLEAR:
         clear()
         reply(ACK)
+    elif command == CMD_EXIT:
+        # Step aside so the board can be re-flashed. Ctrl-C is restored
+        # first, or the next tool along would have no way to interrupt
+        # whatever runs after us.
+        reply(ACK)
+        time.sleep(0.1)  # let the reply reach the host before we go
+        micropython.kbd_intr(3)
+        raise SystemExit
     # An unknown command is ignored; the next "SU" resynchronises us.
 
 
