@@ -9,6 +9,7 @@ panel) attached over USB:
 | **Pi Menu** (`pi-menu`) | Lists the other programs and runs the one you pick in a terminal window. |
 | **Game of Life** (`pi-life`) | Conway's Game of Life on the panel, with start/stop/reset/random and a 16×16 grid you draw on. |
 | **Image Shower** (`pi-imgshow`) | Pick an image file and show it on the panel. PNG, JPEG, BMP, WebP and animated GIF. |
+| **Panel Self-Test** (`pi-menu-doctor`) | Checks every layer between the Pi and the LEDs, then lights the panel up. Run this first when the panel stays dark. |
 
 Each app opens a window for its controls and mirrors what it is doing onto
 the LED panel. When Pi Menu launches one it does so inside a terminal, so
@@ -61,7 +62,12 @@ mpremote cp firmware/stellar_frame_server.py :main.py
 
 (Thonny works too, as does dragging the file across.) The firmware needs the
 Pimoroni MicroPython build, which already includes the `stellar` and
-`picographics` modules.
+`picographics` modules. **Power-cycle the panel afterwards**, and re-copy the
+file whenever you update this repo — the Pi refuses to run against firmware
+older than the protocol it expects, and says so.
+
+Note that the frame server disables Ctrl-C (see below), so **hold the A button
+while the panel powers up** if you want a REPL instead of the server.
 
 To remove everything: `./install.sh --uninstall`.
 
@@ -132,10 +138,20 @@ agree; `tests/test_firmware_link.py` checks that they do.
 
 | Command | Payload | Reply |
 | --- | --- | --- |
-| `0x00` ping | — | `STELLAR16\n` |
+| `0x00` ping | — | `STELLAR16 2\n` |
 | `0x01` blit | 768 bytes RGB, row-major, x fastest | `K\n` |
 | `0x02` brightness | 1 byte, 0–255 | `K\n` |
-| `0x03` clear | — | `K\n` |
+| `0x04` clear | — | `K\n` |
+
+**`0x03` is deliberately absent, and this is the single most important thing
+about the protocol.** MicroPython's USB serial driver reads `0x03` as Ctrl-C:
+it swallows the byte and raises `KeyboardInterrupt` in whatever is running.
+Binary frame data is full of `0x03` — every pixel with a channel value of 3 —
+so the firmware calls `micropython.kbd_intr(-1)` at boot to switch that off.
+Keeping `0x03` out of the command set as well means a Pico still running old
+firmware is merely confused by a clear rather than killed by one. The ping
+reply carries a protocol version so the Pi can tell you when the two have
+drifted apart.
 
 The Pi waits for each acknowledgement before sending the next frame, which
 stops it running ahead of the panel. Frames are written from a background
@@ -156,9 +172,16 @@ both halves of the protocol are exercised together.
 
 ## Troubleshooting
 
-**"Stellar Unicorn unavailable" every time.** Check the Pico is running the
-frame server (`mpremote ls` should show `main.py`) and that you are in the
-`dialout` group — `id -nG | grep dialout`. Group changes need a fresh login.
+**The panel stays dark, or the app runs in the terminal instead.** Run
+`pi-menu-doctor` (or Panel Self-Test in the menu). It walks the whole path one
+layer at a time and names the layer that broke. The usual causes are a Pico
+that is not running `main.py`, and a `dialout` group change that has not taken
+effect yet — `id -nG | grep dialout`, and log out and back in if it is missing.
+
+**It worked once and then stopped until I power-cycled the Pico.** That is
+firmware from before the `kbd_intr` fix: the clear sent when an app exited was
+byte `0x03`, which killed the frame server. Re-copy
+`firmware/stellar_frame_server.py` onto the Pico as `main.py`.
 
 **Nothing appears in the Raspberry Pi menu.** Log out and back in, or run
 `lxpanelctl restart`. The entries are in `~/.local/share/applications`.
