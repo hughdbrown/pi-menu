@@ -14,7 +14,6 @@ import tkinter as tk
 from tkinter import ttk
 
 from ..display import add_display_args, open_display
-from ..display.protocol import FRAME_BYTES, pixel_offset
 from ..display.pump import FramePump
 from ..palette import (
     BG,
@@ -27,7 +26,7 @@ from ..palette import (
     PANEL_BG,
     to_hex,
 )
-from .board import Board
+from .session import LifeSession
 
 CELL_PIXELS = 30
 MIN_SPEED = 1
@@ -41,13 +40,10 @@ class LifeApp:
     def __init__(self, root: tk.Tk, pump: FramePump, wrap: bool = True) -> None:
         self.root = root
         self.pump = pump
-        self.board = Board(wrap=wrap)
+        # Every session control pushes its own frame to the panel, so the
+        # window only has to keep the screen in step with it.
+        self.session = LifeSession(pump.submit, wrap=wrap)
 
-        # The pattern Reset returns to. Hand edits and Random update it;
-        # stepping does not, so Reset always rewinds to what you set up.
-        self.seed = self.board.snapshot()
-
-        self.running = False
         self._after_id: str | None = None
         self._paint_state: bool | None = None
         self._status = tk.StringVar()
@@ -60,6 +56,10 @@ class LifeApp:
         self._build_ui()
         self._bind_keys()
         self.refresh()
+
+    @property
+    def board(self):
+        return self.session.board
 
     # -- construction ----------------------------------------------------
 
@@ -151,7 +151,7 @@ class LifeApp:
             width=12,
         )
         picker.grid(row=12, column=0, sticky="ew")
-        picker.bind("<<ComboboxSelected>>", lambda _event: self.refresh())
+        picker.bind("<<ComboboxSelected>>", lambda _e: self._on_colour())
 
         ttk.Button(controls, text="Quit", command=self.quit).grid(
             row=13, column=0, sticky="ew", pady=(16, 0)
@@ -183,6 +183,10 @@ class LifeApp:
         scale.set(variable.get())
         scale.grid(row=row + 1, column=0, sticky="ew")
 
+    def _on_colour(self) -> None:
+        self.session.set_colour(self.colour.get())
+        self.refresh()
+
     def _bind_keys(self) -> None:
         self.root.bind("<space>", lambda _e: self.toggle_running())
         self.root.bind("<n>", lambda _e: self.randomize())
@@ -193,41 +197,42 @@ class LifeApp:
     # -- controls --------------------------------------------------------
 
     def start(self) -> None:
-        if self.running:
+        if self.session.running:
             return
-        self.running = True
-        self._schedule()
+        if self.session.start():
+            self._schedule()
         self.refresh()
 
     def stop(self) -> None:
-        self.running = False
-        if self._after_id is not None:
-            self.root.after_cancel(self._after_id)
-            self._after_id = None
+        self._cancel_tick()
+        self.session.stop()
         self.refresh()
 
     def toggle_running(self) -> None:
-        self.stop() if self.running else self.start()
+        self.stop() if self.session.running else self.start()
 
     def reset(self) -> None:
         """Rewind to generation 0 of the current seed and pause."""
-        self.stop()
-        self.board.restore(self.seed)
+        self._cancel_tick()
+        self.session.reset()
         self.refresh()
 
     def randomize(self) -> None:
-        self.board.randomize(self.density.get() / 100.0)
-        self.seed = self.board.snapshot()
+        self.session.randomize(self.density.get() / 100.0)
         self.refresh()
 
     def clear(self) -> None:
-        self.stop()
-        self.board.clear()
-        self.seed = self.board.snapshot()
+        self._cancel_tick()
+        self.session.clear()
         self.refresh()
 
+    def _cancel_tick(self) -> None:
+        if self._after_id is not None:
+            self.root.after_cancel(self._after_id)
+            self._after_id = None
+
     def quit(self) -> None:
-        self.stop()
+        self._cancel_tick()
         self.root.destroy()
 
     # -- painting --------------------------------------------------------
@@ -256,11 +261,8 @@ class LifeApp:
 
     def _paint(self, cell: tuple[int, int]) -> None:
         x, y = cell
-        if self.board.get(x, y) == self._paint_state:
-            return
-        self.board.set(x, y, bool(self._paint_state))
-        self.seed = self.board.snapshot()
-        self.refresh()
+        if self.session.set_cell(x, y, bool(self._paint_state)):
+            self.refresh()
 
     # -- the loop --------------------------------------------------------
 
@@ -270,54 +272,38 @@ class LifeApp:
 
     def _tick(self) -> None:
         self._after_id = None
-        if not self.running:
+        if not self.session.running:
             return
-        changed = self.board.step()
+        # A settled board will never change again, so the session stops
+        # itself and there is nothing left to schedule.
+        changed = self.session.step()
         self.refresh()
-        if not changed:
-            # A still life will never change again; stop burning frames.
-            self.running = False
-            self._set_status("settled — no further change")
-            self.refresh()
-            return
-        self._schedule()
+        if changed:
+            self._schedule()
 
     # -- output ----------------------------------------------------------
 
     def refresh(self) -> None:
-        """Redraw the Tk grid, push a frame, and update the status line."""
-        rgb = PALETTE[self.colour.get()]
-        alive_hex = to_hex(rgb)
-        for y in range(self.board.height):
-            for x in range(self.board.width):
-                fill = alive_hex if self.board.get(x, y) else CELL_DEAD
-                self.canvas.itemconfig(self._rects[y * self.board.width + x], fill=fill)
+        """Redraw the window to match the session.
 
-        self.pump.submit(self._framebuffer(rgb))
-        self._set_status()
+        The panel is not touched here -- the session pushed its own frame
+        when the board changed, so the two can never disagree.
+        """
+        alive_hex = to_hex(self.session.rgb)
+        board = self.session.board
+        for y in range(board.height):
+            for x in range(board.width):
+                fill = alive_hex if board.get(x, y) else CELL_DEAD
+                self.canvas.itemconfig(self._rects[y * board.width + x], fill=fill)
+
+        self._status.set(self.session.status_text())
         self._sync_buttons()
         self._check_pump()
 
-    def _framebuffer(self, rgb: tuple[int, int, int]) -> bytes:
-        buf = bytearray(FRAME_BYTES)
-        for x, y in self.board.live_cells():
-            off = pixel_offset(x, y)
-            buf[off : off + 3] = bytes(rgb)
-        return bytes(buf)
-
     def _sync_buttons(self) -> None:
-        self.start_button.state(["disabled"] if self.running else ["!disabled"])
-        self.stop_button.state(["!disabled"] if self.running else ["disabled"])
-
-    def _set_status(self, note: str | None = None) -> None:
-        state = "running" if self.running else "stopped"
-        text = (
-            f"generation {self.board.generation}  ·  "
-            f"population {self.board.population}  ·  {state}"
-        )
-        if note:
-            text += f"  ·  {note}"
-        self._status.set(text)
+        running = self.session.running
+        self.start_button.state(["disabled"] if running else ["!disabled"])
+        self.stop_button.state(["!disabled"] if running else ["disabled"])
 
     def _on_brightness(self) -> None:
         self.pump.set_brightness(self.brightness.get() / 100.0)
@@ -325,7 +311,7 @@ class LifeApp:
     def _check_pump(self) -> None:
         error = self.pump.error
         if error is not None:
-            self._set_status(f"display stopped: {error}")
+            self._status.set(f"panel stopped responding: {error}")
 
 
 def main(argv: list[str] | None = None) -> int:
