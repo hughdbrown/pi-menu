@@ -87,11 +87,13 @@ class SerialDisplay(Display):
         time.sleep(0.3)
         self._serial.reset_input_buffer()
 
-        if not self._handshake():
+        self.firmware_version = self._handshake()
+        if self.firmware_version is None:
             self._serial.close()
             raise StellarUnicornNotFound(
-                f"{self._port_name} did not answer as a Stellar Unicorn; "
-                "is firmware/stellar_frame_server.py installed as main.py?"
+                f"{self._port_name} did not answer as a Stellar Unicorn "
+                f"(last reply: {self._last_reply!r}); copy "
+                "firmware/stellar_frame_server.py onto the Pico as main.py"
             )
 
         super().__init__(brightness=brightness)
@@ -100,12 +102,24 @@ class SerialDisplay(Display):
     def port(self) -> str:
         return self._port_name
 
-    def _handshake(self, attempts: int = 3) -> bool:
+    @property
+    def firmware_is_current(self) -> bool:
+        return self.firmware_version >= proto.PROTOCOL_VERSION
+
+    def _handshake(self, attempts: int = 3) -> int | None:
+        """Ping the panel, returning its protocol version or None.
+
+        Several attempts, because opening the port resets the Pico and
+        its startup chatter can arrive ahead of the first reply.
+        """
+        self._last_reply = b""
         for _ in range(attempts):
             self._serial.write(proto.encode_ping())
-            if self._serial.readline().strip() == proto.HELLO:
-                return True
-        return False
+            self._last_reply = self._serial.readline()
+            version = proto.parse_hello(self._last_reply)
+            if version is not None:
+                return version
+        return None
 
     def _flush(self, framebuffer: bytes) -> None:
         self._serial.write(proto.encode_blit(framebuffer))

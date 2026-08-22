@@ -7,7 +7,7 @@ import sys
 
 from .base import Display
 from .null_ import NullDisplay
-from .protocol import FRAME_BYTES, HEIGHT, NUM_PIXELS, WIDTH
+from .protocol import FRAME_BYTES, HEIGHT, NUM_PIXELS, PROTOCOL_VERSION, WIDTH
 from .serial_link import SerialDisplay, StellarUnicornNotFound, find_port
 from .term import TerminalDisplay
 
@@ -23,6 +23,7 @@ __all__ = [
     "FRAME_BYTES",
     "HEIGHT",
     "NUM_PIXELS",
+    "PROTOCOL_VERSION",
     "WIDTH",
 ]
 
@@ -77,5 +78,17 @@ def open_display(
         print("Falling back to the terminal preview.", file=sys.stderr)
         return TerminalDisplay(brightness=brightness)
 
-    print(f"Stellar Unicorn connected on {display.port}", file=sys.stderr)
+    print(
+        f"Stellar Unicorn connected on {display.port} "
+        f"(firmware protocol v{display.firmware_version})",
+        file=sys.stderr,
+    )
+    if not display.firmware_is_current:
+        print(
+            f"warning: the Pico is running protocol v{display.firmware_version}, "
+            f"this needs v{PROTOCOL_VERSION}. Re-copy "
+            "firmware/stellar_frame_server.py onto it as main.py, or the panel "
+            "will stop responding partway through.",
+            file=sys.stderr,
+        )
     return display

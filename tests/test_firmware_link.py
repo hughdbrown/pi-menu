@@ -1,151 +1,25 @@
-"""End-to-end test of the Pi/Pico link.
+"""End-to-end tests of the Pi/Pico link.
 
-The real firmware from ``firmware/stellar_frame_server.py`` runs in a
-thread with stubbed Pimoroni modules, connected to a pseudo-terminal.
-:class:`SerialDisplay` opens the other end and talks to it exactly as it
-would to a real panel, so a change to either side that breaks the
-protocol fails here rather than on the bench.
+The ``pico`` fixture in conftest.py runs the real firmware against a
+pseudo-terminal, so a change to either side that breaks the protocol
+fails here rather than on the bench.
 """
 
 from __future__ import annotations
 
-import importlib.util
 import os
-import sys
-import threading
-import types
-from pathlib import Path
 
 import pytest
 
+from pi_menu.display import protocol as proto
 from pi_menu.display.protocol import FRAME_BYTES, pixel_offset
 from pi_menu.display.serial_link import SerialDisplay
 
 pytest.importorskip("serial")
 
-FIRMWARE = Path(__file__).resolve().parents[1] / "firmware" / "stellar_frame_server.py"
-
 pytestmark = pytest.mark.skipif(
     not hasattr(os, "openpty"), reason="needs pseudo-terminals"
 )
-
-
-class FakeGraphics:
-    """Stands in for PicoGraphics, recording what was drawn."""
-
-    def __init__(self, display=None):
-        self.display = display
-        self.pen = (0, 0, 0)
-        self.pixels: dict[tuple[int, int], tuple[int, int, int]] = {}
-
-    def create_pen(self, r, g, b):
-        return (r, g, b)
-
-    def set_pen(self, pen):
-        self.pen = pen
-
-    def pixel(self, x, y):
-        self.pixels[(x, y)] = self.pen
-
-    def clear(self):
-        self.pixels = {(x, y): self.pen for x in range(16) for y in range(16)}
-
-
-class FakeUnicorn:
-    """Stands in for StellarUnicorn."""
-
-    def __init__(self):
-        self.brightness = None
-        self.updates = 0
-
-    def set_brightness(self, value):
-        self.brightness = value
-
-    def update(self, graphics):
-        self.updates += 1
-
-
-def _install_stubs():
-    picographics = types.ModuleType("picographics")
-    picographics.PicoGraphics = FakeGraphics
-    picographics.DISPLAY_STELLAR_UNICORN = "stellar"
-
-    stellar = types.ModuleType("stellar")
-    stellar.StellarUnicorn = FakeUnicorn
-
-    sys.modules["picographics"] = picographics
-    sys.modules["stellar"] = stellar
-
-
-class PtyReader:
-    """The firmware's stdin, with a way to break it out of a blocking read.
-
-    Closing a pty master while another thread sits in ``read()`` on it
-    hangs, so teardown closes the slave first -- which makes the read
-    return end-of-file -- and this wrapper then raises to end the loop.
-    """
-
-    def __init__(self, fd):
-        self._file = os.fdopen(fd, "rb", buffering=0)
-        self.stopped = threading.Event()
-
-    def read(self, count):
-        if self.stopped.is_set():
-            raise OSError("link closed")
-        data = self._file.read(count)
-        if self.stopped.is_set():
-            raise OSError("link closed")
-        return data
-
-    def close(self):
-        self._file.close()
-
-
-@pytest.fixture
-def pico():
-    """A running firmware instance and the serial path that reaches it."""
-    _install_stubs()
-
-    spec = importlib.util.spec_from_file_location("stellar_frame_server", FIRMWARE)
-    firmware = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(firmware)  # __name__ is not __main__, so run() waits
-
-    master_fd, slave_fd = os.openpty()
-    slave_path = os.ttyname(slave_fd)
-
-    reader = PtyReader(master_fd)
-    writer = os.fdopen(os.dup(master_fd), "wb", buffering=0)
-    firmware._stdin = reader
-    firmware._stdout = writer
-
-    def serve():
-        try:
-            firmware.run()
-        except (OSError, ValueError, IndexError):
-            pass  # the link went away at teardown
-
-    thread = threading.Thread(target=serve, daemon=True)
-    thread.start()
-
-    try:
-        yield firmware, slave_path
-    finally:
-        reader.stopped.set()
-        _close_quietly(lambda: os.close(slave_fd))  # EOF unblocks the reader
-        thread.join(timeout=2.0)
-        if not thread.is_alive():
-            # Only safe to close the master once nobody is reading it.
-            _close_quietly(reader.close)
-            _close_quietly(writer.close)
-        for name in ("picographics", "stellar"):
-            sys.modules.pop(name, None)
-
-
-def _close_quietly(action):
-    try:
-        action()
-    except OSError:
-        pass
 
 
 def test_the_handshake_identifies_the_panel(pico):
@@ -269,3 +143,73 @@ def test_a_nonexistent_port_is_rejected(tmp_path):
 
     with pytest.raises(StellarUnicornNotFound, match="could not open"):
         SerialDisplay(port=str(tmp_path / "ttyNOPE"))
+
+
+def test_the_handshake_reports_the_firmware_protocol_version(pico):
+    _, path = pico
+    display = SerialDisplay(port=path)
+    try:
+        assert display.firmware_version == proto.PROTOCOL_VERSION
+        assert display.firmware_is_current
+    finally:
+        display.close()
+
+
+def test_frame_data_containing_the_interrupt_byte_survives(pico):
+    """MicroPython reads 0x03 as Ctrl-C and swallows it.
+
+    Any pixel with a channel value of 3 puts that byte on the wire. If
+    the firmware has not disabled the interrupt character the byte is
+    dropped, every following pixel shifts, and the panel fills with
+    garbage before the server dies outright.
+    """
+    firmware, path = pico
+    display = SerialDisplay(port=path)
+    try:
+        for y in range(16):
+            for x in range(16):
+                display.set_pixel(x, y, 3, 3, 3)
+        display.show()
+
+        assert firmware.graphics.pixels[(0, 0)] == (3, 3, 3)
+        assert firmware.graphics.pixels[(15, 15)] == (3, 3, 3)
+    finally:
+        display.close()
+
+
+def test_no_command_byte_is_the_interrupt_character():
+    """Defence in depth: a Pico on old firmware should not be killed."""
+    commands = (proto.CMD_PING, proto.CMD_BLIT, proto.CMD_BRIGHTNESS, proto.CMD_CLEAR)
+    assert proto.INTERRUPT_CHAR not in commands
+    assert proto.INTERRUPT_CHAR not in proto.encode_clear()
+    assert proto.INTERRUPT_CHAR not in proto.encode_ping()
+
+
+def test_the_firmware_disables_the_keyboard_interrupt_at_startup():
+    """The one line that keeps binary frames from killing the server."""
+    source = (
+        __import__("pathlib").Path(__file__).resolve().parents[1]
+        / "firmware"
+        / "stellar_frame_server.py"
+    ).read_text()
+    assert "micropython.kbd_intr(-1)" in source
+
+
+def test_holding_the_a_button_offers_an_escape_to_the_repl():
+    """kbd_intr(-1) removes Ctrl-C, so there has to be another way out."""
+    from conftest import load_firmware
+
+    firmware = load_firmware()
+    assert firmware.escape_requested() is False
+
+    firmware.unicorn.pressed = True
+    assert firmware.escape_requested() is True
+
+
+def test_the_escape_check_happens_before_the_interrupt_is_disabled():
+    source = (
+        __import__("pathlib").Path(__file__).resolve().parents[1]
+        / "firmware"
+        / "stellar_frame_server.py"
+    ).read_text()
+    assert source.index("escape_requested()") < source.index("micropython.kbd_intr(-1)")

@@ -31,7 +31,31 @@ def test_brightness_is_clamped_into_one_byte():
 
 def test_ping_and_clear_are_bare_commands():
     assert proto.encode_ping() == b"SU\x00"
-    assert proto.encode_clear() == b"SU\x03"
+    assert proto.encode_clear() == b"SU\x04"
+
+
+def test_no_command_byte_collides_with_micropythons_interrupt_char():
+    """0x03 over USB serial raises KeyboardInterrupt on the Pico."""
+    commands = (proto.CMD_PING, proto.CMD_BLIT, proto.CMD_BRIGHTNESS, proto.CMD_CLEAR)
+    assert proto.INTERRUPT_CHAR == 0x03
+    assert proto.INTERRUPT_CHAR not in commands
+
+
+@pytest.mark.parametrize(
+    "reply,expected",
+    [
+        (b"STELLAR16 2\n", 2),
+        (b"STELLAR16 2\r\n", 2),
+        (b"  STELLAR16 7\n", 7),
+        (b"STELLAR16\n", 1),          # firmware from before version numbers
+        (b"", None),
+        (b">>> \n", None),            # a MicroPython REPL, not our server
+        (b"Traceback (most recent call last):\n", None),
+        (b"STELLAR16 x\n", None),
+    ],
+)
+def test_parse_hello_identifies_the_firmware(reply, expected):
+    assert proto.parse_hello(reply) == expected
 
 
 def test_pixels_are_row_major_with_x_varying_fastest():
