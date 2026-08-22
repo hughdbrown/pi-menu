@@ -93,8 +93,13 @@ Pick a program and press Run.
   drew or the last one Random produced.
 - **Clear** blanks the grid, and makes *that* the seed.
 - **Random** fills the grid at the density set by the slider.
-- **Click or drag the grid** to draw. It works while the simulation runs, so
-  you can poke a living pattern and see what happens.
+- **Click or drag the grid** to draw your starting pattern.
+- **While it runs, the panel is the display.** The on-screen grid stops
+  following the simulation and greys out, so there is only one thing to watch
+  and no second copy racing the LEDs. Press Stop and the grid comes back for
+  editing. Tick **Mirror on screen** to have the window follow along as well —
+  with no panel attached that is the default, since otherwise the window would
+  have nothing in it.
 - Speed, brightness and colour have sliders. Keys: space, `r`, `n`, `c`, `q`.
 
 The grid wraps around, so a glider leaving the right edge returns on the

@@ -27,7 +27,7 @@ from ..palette import (
     WARN,
     to_hex,
 )
-from .session import LifeSession
+from .session import LifeSession, default_mirroring, grid_should_rest
 
 CELL_PIXELS = 30
 MIN_SPEED = 1
@@ -52,6 +52,11 @@ class LifeApp:
         self.speed = tk.IntVar(value=DEFAULT_SPEED)
         self.density = tk.IntVar(value=30)
         self.colour = tk.StringVar(value=DEFAULT_COLOUR)
+        # With a panel attached the panel is the display, so the grid
+        # stops mirroring once the simulation runs. Without one it keeps
+        # mirroring, or the window would have nothing in it at all.
+        self.mirror = tk.BooleanVar(value=default_mirroring(pump.display.is_panel))
+        self._hint = tk.StringVar()
         self.brightness = tk.IntVar(value=int(pump.display.brightness * 100))
 
         self._build_ui()
@@ -80,6 +85,7 @@ class LifeApp:
         style.configure("Warn.TLabel", background=BG, foreground=WARN)
         style.configure("TButton", padding=(10, 6))
         style.configure("TScale", background=BG)
+        style.configure("TCheckbutton", background=BG, foreground=FG)
 
         outer = ttk.Frame(self.root, padding=12)
         outer.grid(row=0, column=0, sticky="nsew")
@@ -114,6 +120,18 @@ class LifeApp:
                         outline=GRID_LINE,
                     )
                 )
+
+        # Sits above the cells, shown only when the grid is resting.
+        middle = self.board.width * CELL_PIXELS // 2
+        self._overlay = self.canvas.create_text(
+            middle,
+            middle,
+            text="",
+            fill=MUTED,
+            justify="center",
+            state="hidden",
+            font=("", 13),
+        )
 
         controls = ttk.Frame(outer, padding=(14, 0, 0, 0))
         controls.grid(row=0, column=1, sticky="new")
@@ -155,18 +173,21 @@ class LifeApp:
         picker.grid(row=12, column=0, sticky="ew")
         picker.bind("<<ComboboxSelected>>", lambda _e: self._on_colour())
 
+        ttk.Checkbutton(
+            controls,
+            text="Mirror on screen",
+            variable=self.mirror,
+            command=self.refresh,
+        ).grid(row=13, column=0, sticky="w", pady=(12, 0))
+
         ttk.Button(controls, text="Quit", command=self.quit).grid(
-            row=13, column=0, sticky="ew", pady=(16, 0)
+            row=14, column=0, sticky="ew", pady=(16, 0)
         )
 
         status = ttk.Label(outer, textvariable=self._status, style="Muted.TLabel")
         status.grid(row=2, column=0, columnspan=2, sticky="w", pady=(10, 0))
 
-        hint = ttk.Label(
-            outer,
-            text="Click or drag the grid to draw cells — it works while running too.",
-            style="Muted.TLabel",
-        )
+        hint = ttk.Label(outer, textvariable=self._hint, style="Muted.TLabel")
         hint.grid(row=3, column=0, columnspan=2, sticky="w")
 
         # Which device is actually lighting up. Worth a permanent line:
@@ -255,6 +276,8 @@ class LifeApp:
         return (x, y) if self.board.in_bounds(x, y) else None
 
     def _on_paint_start(self, event) -> None:
+        if self.grid_is_resting():
+            return  # the grid is not showing the board, so a click would be blind
         cell = self._cell_at(event)
         if cell is None:
             return
@@ -264,6 +287,8 @@ class LifeApp:
         self._paint(cell)
 
     def _on_paint_drag(self, event) -> None:
+        if self.grid_is_resting():
+            return
         cell = self._cell_at(event)
         if cell is not None and self._paint_state is not None:
             self._paint(cell)
@@ -301,16 +326,45 @@ class LifeApp:
         The panel is not touched here -- the session pushed its own frame
         when the board changed, so the two can never disagree.
         """
+        self._draw_grid()
+        self._status.set(self.session.status_text())
+        self._sync_buttons()
+        self._check_pump()
+
+    def grid_is_resting(self) -> bool:
+        """True when the grid should stop following the simulation.
+
+        While the panel is showing the animation there is no reason for
+        the window to race it, and a second copy of the same thing
+        invites you to watch the wrong one.
+        """
+        return grid_should_rest(self.session.running, self.mirror.get())
+
+    def _draw_grid(self) -> None:
+        if self.grid_is_resting():
+            for rect in self._rects:
+                self.canvas.itemconfig(rect, fill=CELL_DEAD)
+            self.canvas.itemconfig(
+                self._overlay, state="normal", text=self._resting_text()
+            )
+            self._hint.set("Press Stop to get the grid back for drawing.")
+            return
+
+        self.canvas.itemconfig(self._overlay, state="hidden")
         alive_hex = to_hex(self.session.rgb)
         board = self.session.board
         for y in range(board.height):
             for x in range(board.width):
                 fill = alive_hex if board.get(x, y) else CELL_DEAD
                 self.canvas.itemconfig(self._rects[y * board.width + x], fill=fill)
+        self._hint.set(
+            "Click or drag the grid to draw cells — it works while running too."
+        )
 
-        self._status.set(self.session.status_text())
-        self._sync_buttons()
-        self._check_pump()
+    def _resting_text(self) -> str:
+        if self.pump.display.is_panel:
+            return "running on the\nStellar Unicorn"
+        return "running\n(mirror is off)"
 
     def _sync_buttons(self) -> None:
         running = self.session.running

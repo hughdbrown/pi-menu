@@ -26,6 +26,24 @@ EMPTY_NOTE = "board is empty — draw some cells or press Random"
 SETTLED_NOTE = "settled — no further change"
 
 
+def default_mirroring(has_panel: bool) -> bool:
+    """Whether the window should follow the simulation by default.
+
+    With a panel attached the panel is the display, so the window need
+    not race it. With no panel the window is all there is.
+    """
+    return not has_panel
+
+
+def grid_should_rest(running: bool, mirroring: bool) -> bool:
+    """True when the on-screen grid should stop following the board.
+
+    Only while it is actually running: a stopped board still has to be
+    visible, because that is when you draw on it.
+    """
+    return running and not mirroring
+
+
 class LifeSession:
     """Board, seed and panel state for one run of the game."""
 

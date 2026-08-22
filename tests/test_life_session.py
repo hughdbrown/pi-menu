@@ -276,3 +276,61 @@ def test_every_control_reaches_the_real_panel(pico):
         assert lit_on_panel() == set()
     finally:
         display.close()
+
+
+# -- what the window shows while the panel is running --------------------
+
+
+def test_the_grid_follows_the_simulation_when_there_is_no_panel():
+    """With no panel the window is the only place to watch."""
+    from pi_menu.life.session import default_mirroring
+
+    assert default_mirroring(has_panel=False) is True
+
+
+def test_the_grid_leaves_the_animation_to_the_panel_when_one_is_attached():
+    from pi_menu.life.session import default_mirroring
+
+    assert default_mirroring(has_panel=True) is False
+
+
+@pytest.mark.parametrize(
+    "running,mirroring,resting",
+    [
+        (True, False, True),    # panel is showing it; the grid steps back
+        (True, True, False),    # mirroring turned back on
+        (False, False, False),  # stopped: the grid must be visible to draw on
+        (False, True, False),
+    ],
+)
+def test_the_grid_only_rests_while_the_simulation_is_running(
+    running, mirroring, resting
+):
+    from pi_menu.life.session import grid_should_rest
+
+    assert grid_should_rest(running, mirroring) is resting
+
+
+def test_a_stopped_board_is_always_drawn_so_it_can_be_edited():
+    """Whatever the mirror setting, Stop has to give the grid back."""
+    from pi_menu.life.session import grid_should_rest
+
+    assert grid_should_rest(running=False, mirroring=False) is False
+    assert grid_should_rest(running=False, mirroring=True) is False
+
+
+def test_resting_the_grid_does_not_stop_frames_reaching_the_panel(session):
+    """The window and the panel are fed separately; only the window rests."""
+    life, recorder = session
+    life.set_cell(1, 1, True)
+    life.set_cell(2, 1, True)
+    life.set_cell(3, 1, True)
+    before = len(recorder.frames)
+
+    life.start()
+    life.step()
+    life.step()
+
+    # Three pushes regardless of what the window is doing.
+    assert len(recorder.frames) == before + 3
+    assert recorder.lit() == set(life.board.live_cells())
