@@ -24,6 +24,7 @@ from ..palette import (
     MUTED,
     PALETTE,
     PANEL_BG,
+    WARN,
     to_hex,
 )
 from .session import LifeSession
@@ -64,7 +65,7 @@ class LifeApp:
     # -- construction ----------------------------------------------------
 
     def _build_ui(self) -> None:
-        self.root.title("Conway's Game of Life — Stellar Unicorn")
+        self.root.title(f"Conway's Game of Life — {self.pump.display.description}")
         self.root.configure(bg=BG)
         self.root.protocol("WM_DELETE_WINDOW", self.quit)
 
@@ -76,6 +77,7 @@ class LifeApp:
         style.configure("TFrame", background=BG)
         style.configure("TLabel", background=BG, foreground=FG)
         style.configure("Muted.TLabel", background=BG, foreground=MUTED)
+        style.configure("Warn.TLabel", background=BG, foreground=WARN)
         style.configure("TButton", padding=(10, 6))
         style.configure("TScale", background=BG)
 
@@ -166,6 +168,16 @@ class LifeApp:
             style="Muted.TLabel",
         )
         hint.grid(row=3, column=0, columnspan=2, sticky="w")
+
+        # Which device is actually lighting up. Worth a permanent line:
+        # a terminal preview looks like a working program, so without
+        # this there is nothing on screen to say the panel is missing.
+        panel = self.pump.display
+        ttk.Label(
+            outer,
+            text=f"Output: {panel.description}",
+            style="Muted.TLabel" if panel.is_panel else "Warn.TLabel",
+        ).grid(row=4, column=0, columnspan=2, sticky="w", pady=(6, 0))
 
     def _slider(self, parent, row, label, variable, low, high, command=None) -> None:
         ttk.Label(parent, text=label, style="Muted.TLabel").grid(

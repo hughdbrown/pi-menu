@@ -102,9 +102,15 @@ frame timings; untick Animate for just the first frame.
 
 ### No panel attached?
 
-Both apps fall back to an ANSI preview in their terminal, printing why on the
-way. Handy for working on the code away from the hardware. Force it with
-`--backend term`, and name a port explicitly with `--port /dev/ttyACM0`.
+Both apps fall back to an ANSI preview in their terminal rather than refusing
+to start — handy for working on the code away from the hardware. The fallback
+announces itself in a banner you cannot miss, and each window carries an
+**Output:** line naming the device it is really drawing on, because a preview
+that runs perfectly looks exactly like a working program.
+
+Force the preview with `--backend term`. Use `--backend serial` to make a
+missing panel an error instead of a fallback, and `--port /dev/ttyACM0` to
+name a device explicitly.
 
 ## Adding your own programs
 

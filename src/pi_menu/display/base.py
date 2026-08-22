@@ -68,6 +68,16 @@ class Display(ABC):
     def brightness(self) -> float:
         return self._brightness
 
+    @property
+    def description(self) -> str:
+        """Where frames are going, in words fit for a title bar."""
+        return type(self).__name__
+
+    @property
+    def is_panel(self) -> bool:
+        """True only when this really is the Stellar Unicorn."""
+        return False
+
     def close(self) -> None:
         """Release any resources. Safe to call more than once."""
 

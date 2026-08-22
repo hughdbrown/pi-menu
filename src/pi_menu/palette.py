@@ -23,6 +23,7 @@ CELL_DEAD = "#1d1d25"
 GRID_LINE = "#2c2c38"
 FG = "#e6e6ee"
 MUTED = "#9a9aab"
+WARN = "#ffab5e"
 
 
 def to_hex(rgb: tuple[int, int, int]) -> str:

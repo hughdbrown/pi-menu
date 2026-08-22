@@ -119,3 +119,51 @@ def test_asking_for_serial_explicitly_reports_the_failure(monkeypatch):
 
     with pytest.raises(StellarUnicornNotFound):
         open_display("serial")
+
+
+def test_each_backend_says_what_it_is():
+    """A preview must never be mistaken for the panel."""
+    from pi_menu.display.term import TerminalDisplay
+
+    assert NullDisplay().description == "no display"
+
+    preview = TerminalDisplay(stream=io.StringIO())
+    try:
+        assert "TERMINAL PREVIEW" in preview.description
+        assert preview.is_panel is False
+    finally:
+        preview.close()
+
+
+def test_the_panel_backend_names_the_port_and_firmware(pico):
+    from pi_menu.display.serial_link import SerialDisplay
+
+    _, path = pico
+    display = SerialDisplay(port=path)
+    try:
+        assert display.is_panel is True
+        assert path in display.description
+        assert "firmware v" in display.description
+    finally:
+        display.close()
+
+
+def test_the_fallback_shouts_rather_than_murmurs(monkeypatch, capsys):
+    """The quiet version of this message went unread and cost a session."""
+    import pi_menu.display as display_module
+    from pi_menu.display.serial_link import StellarUnicornNotFound
+
+    def no_panel(*args, **kwargs):
+        raise StellarUnicornNotFound("nothing plugged in")
+
+    monkeypatch.setattr(display_module, "SerialDisplay", no_panel)
+
+    display = open_display("auto")
+    try:
+        stderr = capsys.readouterr().err
+        assert "NO STELLAR UNICORN FOUND" in stderr
+        assert "mpremote cp" in stderr        # tells you how to fix it
+        assert "pi-menu-doctor" in stderr
+        assert "nothing plugged in" in stderr  # and why it happened
+    finally:
+        display.close()

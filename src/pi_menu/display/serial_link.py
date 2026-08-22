@@ -79,9 +79,8 @@ class SerialDisplay(Display):
                 self._port_name, baud, timeout=timeout, write_timeout=timeout
             )
         except Exception as exc:
-            raise StellarUnicornNotFound(
-                f"could not open {self._port_name}: {exc}"
-            ) from exc
+            # pyserial's message already names the port, so do not repeat it.
+            raise StellarUnicornNotFound(str(exc)) from exc
 
         # The Pico reboots when the port opens; give it a moment to come up.
         time.sleep(0.3)
@@ -101,6 +100,14 @@ class SerialDisplay(Display):
     @property
     def port(self) -> str:
         return self._port_name
+
+    @property
+    def description(self) -> str:
+        return f"Stellar Unicorn on {self._port_name} (firmware v{self.firmware_version})"
+
+    @property
+    def is_panel(self) -> bool:
+        return True
 
     @property
     def firmware_is_current(self) -> bool:

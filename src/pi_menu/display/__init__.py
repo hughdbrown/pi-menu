@@ -74,8 +74,7 @@ def open_display(
     try:
         display = SerialDisplay(port=port, brightness=brightness)
     except StellarUnicornNotFound as exc:
-        print(f"Stellar Unicorn unavailable: {exc}", file=sys.stderr)
-        print("Falling back to the terminal preview.", file=sys.stderr)
+        _announce_fallback(exc)
         return TerminalDisplay(brightness=brightness)
 
     print(
@@ -92,3 +91,27 @@ def open_display(
             file=sys.stderr,
         )
     return display
+
+
+def _announce_fallback(reason: Exception) -> None:
+    """Say loudly that the panel is not being used.
+
+    A quiet note here once cost a debugging session: the simulation ran
+    perfectly in the terminal and looked like a working program, so the
+    real message -- that the panel never connected -- went unread.
+    """
+    rule = "!" * 68
+    for line in (
+        "",
+        rule,
+        "  NO STELLAR UNICORN FOUND. Drawing in this terminal instead.",
+        "",
+        f"  Reason: {reason}",
+        "",
+        "  What you see below is a preview, not the panel. To fix it:",
+        "    mpremote cp firmware/stellar_frame_server.py :main.py",
+        "    ...then power-cycle the panel and run: pi-menu-doctor",
+        rule,
+        "",
+    ):
+        print(line, file=sys.stderr)

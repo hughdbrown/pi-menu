@@ -26,6 +26,10 @@ class TerminalDisplay(Display):
         super().__init__(brightness=brightness)
         self._stream.write(_HIDE_CURSOR)
 
+    @property
+    def description(self) -> str:
+        return "TERMINAL PREVIEW — no Stellar Unicorn connected"
+
     def _flush(self, framebuffer: bytes) -> None:
         rows = self.height // 2
         if self._drawn:

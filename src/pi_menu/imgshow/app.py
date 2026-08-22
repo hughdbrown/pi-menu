@@ -17,7 +17,7 @@ from tkinter import filedialog, ttk
 from ..display import add_display_args, open_display
 from ..display.protocol import FRAME_BYTES, HEIGHT, WIDTH
 from ..display.pump import FramePump
-from ..palette import BG, FG, GRID_LINE, MUTED, PANEL_BG, to_hex
+from ..palette import BG, FG, GRID_LINE, MUTED, PANEL_BG, WARN, to_hex
 from .loader import (
     SUPPORTED_EXTENSIONS,
     Frame,
@@ -65,7 +65,7 @@ class ImageShowApp:
     # -- construction ----------------------------------------------------
 
     def _build_ui(self) -> None:
-        self.root.title("Image Shower — Stellar Unicorn")
+        self.root.title(f"Image Shower — {self.pump.display.description}")
         self.root.configure(bg=BG)
         self.root.protocol("WM_DELETE_WINDOW", self.quit)
 
@@ -77,6 +77,7 @@ class ImageShowApp:
         style.configure("TFrame", background=BG)
         style.configure("TLabel", background=BG, foreground=FG)
         style.configure("Muted.TLabel", background=BG, foreground=MUTED)
+        style.configure("Warn.TLabel", background=BG, foreground=WARN)
         style.configure("TRadiobutton", background=BG, foreground=FG)
         style.configure("TCheckbutton", background=BG, foreground=FG)
         style.configure("TButton", padding=(10, 6))
@@ -167,6 +168,15 @@ class ImageShowApp:
         ttk.Label(outer, textvariable=self._status, style="Muted.TLabel").grid(
             row=2, column=0, columnspan=2, sticky="w", pady=(10, 0)
         )
+
+        # See the note in life/app.py: a preview must not be mistaken for
+        # the panel.
+        panel = self.pump.display
+        ttk.Label(
+            outer,
+            text=f"Output: {panel.description}",
+            style="Muted.TLabel" if panel.is_panel else "Warn.TLabel",
+        ).grid(row=3, column=0, columnspan=2, sticky="w", pady=(6, 0))
 
     # -- loading ---------------------------------------------------------
 

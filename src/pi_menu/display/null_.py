@@ -12,6 +12,10 @@ class NullDisplay(Display):
         self.frames: list[bytes] = []
         super().__init__(brightness=brightness)
 
+    @property
+    def description(self) -> str:
+        return "no display"
+
     def _flush(self, framebuffer: bytes) -> None:
         self.frames.append(framebuffer)
 
