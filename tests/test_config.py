@@ -13,9 +13,9 @@ def write(tmp_path, payload):
     return path
 
 
-def test_the_packaged_app_list_loads_and_offers_both_apps():
+def test_the_packaged_app_list_offers_the_apps_and_the_self_test():
     apps = load_apps()
-    assert {app.id for app in apps} == {"life", "imgshow"}
+    assert {app.id for app in apps} == {"life", "imgshow", "doctor"}
 
 
 def test_the_packaged_commands_point_at_real_importable_modules():

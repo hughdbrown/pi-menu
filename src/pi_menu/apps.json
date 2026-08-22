@@ -4,15 +4,34 @@
       "id": "life",
       "name": "Conway's Game of Life",
       "description": "Cellular automaton on the 16x16 Stellar Unicorn. Draw a pattern, or seed it at random, then watch it run.",
-      "command": ["{python}", "-m", "pi_menu.life.app"],
+      "command": [
+        "{python}",
+        "-m",
+        "pi_menu.life.app"
+      ],
       "hold": "on-error"
     },
     {
       "id": "imgshow",
       "name": "Image Shower",
       "description": "Pick an image file and display it on the Stellar Unicorn. Handles PNG, JPEG, BMP, WebP and animated GIF.",
-      "command": ["{python}", "-m", "pi_menu.imgshow.app"],
+      "command": [
+        "{python}",
+        "-m",
+        "pi_menu.imgshow.app"
+      ],
       "hold": "on-error"
+    },
+    {
+      "id": "doctor",
+      "name": "Panel Self-Test",
+      "description": "Check the link to the Stellar Unicorn one layer at a time, then light the panel up. Run this first when the panel stays dark.",
+      "command": [
+        "{python}",
+        "-m",
+        "pi_menu.doctor"
+      ],
+      "hold": "always"
     }
   ]
 }
