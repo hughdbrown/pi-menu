@@ -11,6 +11,7 @@ import os
 import pytest
 
 from pi_menu import doctor
+from pi_menu.display.protocol import PROTOCOL_VERSION
 
 pytestmark = pytest.mark.skipif(
     not hasattr(os, "openpty"), reason="needs pseudo-terminals"
@@ -25,9 +26,9 @@ def test_a_running_panel_passes_the_handshake_check(pico):
     _, path = pico
     results, version = doctor.check_handshake(path)
 
-    assert version == 2
+    assert version == PROTOCOL_VERSION
     assert levels(results, doctor.FAIL) == []
-    assert "protocol v2" in results[0].title
+    assert f"protocol v{PROTOCOL_VERSION}" in results[0].title
 
 
 def test_the_frame_test_lights_the_panel_and_reports_a_rate(pico):
