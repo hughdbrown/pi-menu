@@ -27,7 +27,14 @@ def _stub_tkinter():
         pass
 
     tkinter = types.ModuleType("tkinter")
-    for name in ("Tk", "Canvas", "Listbox", "StringVar", "IntVar", "BooleanVar"):
+    for name in (
+        "Tk",
+        "Canvas",
+        "Listbox",
+        "StringVar",
+        "IntVar",
+        "BooleanVar",
+    ):
         setattr(tkinter, name, type(name, (), {}))
     tkinter.TclError = type("TclError", (Exception,), {})
     tkinter.END = "end"
@@ -42,7 +49,12 @@ def _stub_tkinter():
 
 _stub_tkinter()
 
-MODULES = ["pi_menu.launcher", "pi_menu.life.app", "pi_menu.imgshow.app"]
+MODULES = [
+    "pi_menu.launcher",
+    "pi_menu.life.app",
+    "pi_menu.imgshow.app",
+    "pi_menu.platformer.app",
+]
 
 
 @pytest.mark.parametrize("name", MODULES)
@@ -62,7 +74,9 @@ def test_help_lists_the_options_without_opening_a_window(name, capsys):
     assert "usage:" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("name", ["pi_menu.life.app", "pi_menu.imgshow.app"])
+@pytest.mark.parametrize(
+    "name", ["pi_menu.life.app", "pi_menu.imgshow.app", "pi_menu.platformer.app"]
+)
 def test_the_apps_share_the_display_options(name, capsys):
     module = importlib.import_module(name)
 
