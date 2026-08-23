@@ -482,27 +482,31 @@ def test_the_game_reaches_the_real_panel(pico, tmp_path):
 # -- one whole level, through the keys the player actually presses -------
 
 
-def test_a_level_can_be_finished_by_pressing_keys(tmp_path):
+@pytest.mark.parametrize("index", [0, len(LEVELS) - 1], ids=["first", "last"])
+def test_a_level_can_be_finished_by_pressing_keys(tmp_path, index):
     """The solver finds the route; this proves the plumbing carries it.
 
     Everything else here pokes the session's state directly. This takes
-    the winning move sequence for level one and replays it as presses
-    and releases through the same path the window uses, so a mistake in
-    the key mapping, the held-key set or the tick order shows up as a
-    level that cannot be completed.
+    a winning move sequence and replays it as presses and releases
+    through the same path the window uses, so a mistake in the key
+    mapping, the held-key set or the tick order shows up as a level that
+    cannot be completed. The last level is included because it is the
+    one that uses ice, a ferry, a belt, an enemy, a crumbling floor and
+    a bounce pad -- every moving part at once.
     """
     from platform_solver import HOLD_TICKS, solve
 
+    chosen = LEVELS[index]
     to_session = {physics.LEFT: LEFT, physics.RIGHT: RIGHT, physics.JUMP: UP}
     recorder = Recorder()
     game = PlatformSession(
-        recorder, progress=Progress(tmp_path / "p.json"), levels=LEVELS[:1]
+        recorder, progress=Progress(tmp_path / "p.json"), levels=[chosen]
     )
     game.press(SELECT)
     assert game.screen is Screen.PLAY
 
     down = set()
-    for move in solve(LEVELS[0]):
+    for move in solve(chosen):
         wanted = {to_session[key] for key in move}
         for key in wanted - down:
             game.press(key)
@@ -517,4 +521,4 @@ def test_a_level_can_be_finished_by_pressing_keys(tmp_path):
             break
 
     assert game.screen is Screen.WON
-    assert game.progress.is_done(LEVELS[0].id)
+    assert game.progress.is_done(chosen.id)
