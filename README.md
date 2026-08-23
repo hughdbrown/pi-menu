@@ -9,7 +9,7 @@ panel) attached over USB:
 | **Pi Menu** (`pi-menu`) | Lists the other programs and runs the one you pick in a terminal window. |
 | **Game of Life** (`pi-life`) | Conway's Game of Life on the panel, with start/stop/reset/random and a 16×16 grid you draw on. |
 | **Image Shower** (`pi-imgshow`) | Pick an image file and show it on the panel. PNG, JPEG, BMP, WebP and animated GIF. |
-| **Platform Game** (`pi-platformer`) | A side-scrolling platform game played with the arrow keys. Twelve levels, and a menu drawn on the panel itself. |
+| **Platform Game** (`pi-platformer`) | A side-scrolling platform game played with the arrow keys. Twenty-seven levels, and a menu drawn on the panel itself. |
 | **Panel Self-Test** (`pi-menu-doctor`) | Checks every layer between the Pi and the LEDs, then lights the panel up. Run this first when the panel stays dark. |
 | **Flash Panel Firmware** (`pi-menu-flash`) | Copies the frame server onto the Stellar Unicorn's Pico over USB. Needs nothing but pyserial. |
 
@@ -125,12 +125,29 @@ it focused, because it is what holds the keyboard.
   tapping it.
 - **Enter** chooses, **Esc** goes back. From a level, Esc returns to the menu.
 - The menu is two words: **PLAY** carries on from the first level you have not
-  finished, **LVLS** opens the picker — a tile per level, green once it is
-  done, with the number of the one under the cursor below the grid.
+  finished, **LVLS** opens the picker — a pixel per level, eight to a row,
+  green once it is done, with the number of the one under the cursor below.
 - **Collect every coin to open the goal**, then reach it. The goal is dim grey
   until the last coin is taken, then it flashes green.
-- Red is a spike and will kill you, as will falling off the bottom. There are
-  no lives: the level simply starts again.
+- There are no lives. Anything that kills you simply starts the level again.
+
+Twenty-seven levels, each new mechanic introduced on its own before any level
+combines them. Colour is the only label the panel has room for:
+
+| | Colour | What it is |
+| --- | --- | --- |
+| `@` | cyan | you |
+| `o` | amber | a coin. Take them all and the goal opens |
+| `G` | grey → flashing green | the goal, shut then open |
+| `=` | dark blue | ordinary ground |
+| `-` `\|` | bright blue | a platform sliding along a track. Ride it |
+| `b` | lime | a bounce pad — about six cells, well past a jump |
+| `i` | pale blue | ice. Almost no grip; stopping has to be planned |
+| `<` `>` | teal | a conveyor. The highlight travels the way it pushes you |
+| `c` | rust | a crumbling tile. It holds you once, then it is gone |
+| `p` | magenta | a portal. Its pair is somewhere else on the level |
+| `^` | red | a spike |
+| `E` | pink | an enemy, pacing its ledge. Go over it — you cannot land on it |
 
 The jump is deliberately forgiving. It still fires for a few hundredths of a
 second after you walk off a ledge, and one pressed just before you land is
@@ -220,7 +237,15 @@ of the platform game with a search that steps the real physics, and passes
 only when it finds a sequence of key presses that finishes the level. A map
 can be well formed, readable and still impossible — a coin one cell above the
 jump arc looks exactly like a coin one cell below it — so a new or edited
-level that cannot be won fails the suite rather than the player.
+level that cannot be won fails the suite rather than the player. It has caught
+five broken levels so far.
+
+Two things about that search are worth knowing before adding a level. It
+carries the world's clock in its state, so a level's *period* — how long until
+every moving thing is back where it started — multiplies its work; keep enemy
+pens and mover tracks to matching lengths and the period stays small. And it
+scores positions by a flood fill over open ground rather than by straight-line
+distance, which is what lets it find a portal that leads away from the goal.
 
 ## Troubleshooting
 

@@ -35,7 +35,7 @@ kept small.
 | --- | --- | --- |
 | `platformer/font.py` | 3x5 glyphs for the menu words and digits 0-9 | nothing |
 | `platformer/level.py` | `Level`: parse an ASCII map; `solid()`, coins, spikes, spawn, goal | nothing |
-| `platformer/levels.py` | The twelve level maps, as ASCII art with ids | `level` |
+| `platformer/levels.py` | The twenty-seven level maps, as ASCII art with ids | `level` |
 | `platformer/world.py` | `World`: physics, collision, pickups, death, win | `level` |
 | `platformer/camera.py` | `window_x()`: centre on the player, clamp to the level | nothing |
 | `platformer/render.py` | Framebuffer painters for world, menu, picker and flashes | `level`, `world`, `font`, `display.protocol` |
@@ -56,10 +56,24 @@ without either knowing about the other.
 A level is a list of equal-length strings, 16 rows tall:
 
 ```
-.  empty        =  solid platform
-@  spawn        o  coin
-^  spike        G  goal
+.  empty          ^  spike           -  horizontal mover track
+=  solid          G  goal            |  vertical mover track
+@  spawn          i  ice             E  enemy
+o  coin           b  bounce pad      p  portal (in pairs)
+c  crumbling      <  belt, pushes left    >  belt, pushes right
 ```
+
+The moving parts are static descriptions of movement. A mover's track is the
+run of `-` or `|` it slides along; an enemy's patrol is worked out once, when
+the level is parsed, from the ledge it starts on. Where each one *is* at any
+moment is a pure function of the tick, so a level has a **period** — how long
+until everything is back where it started — a world can be rewound by
+rewinding its clock, and the solver can treat time as one more coordinate
+instead of modelling a simulation inside its search.
+
+Two enemies in pens of different lengths gave one level a period of 2184,
+which multiplied the search past reach. Matching the pens brought it to 24. A
+test now caps the period at 240.
 
 `Level` rejects a map that is not 16 rows tall, has ragged rows, contains an
 unknown character, or does not have exactly one spawn and one goal. Those are
@@ -84,6 +98,10 @@ floored to integers only when drawing.
 | `MAX_FALL_SPEED` | 0.85 | under one cell a tick |
 | `COYOTE_TICKS` | 3 | jump still works just after leaving a ledge |
 | `BUFFER_TICKS` | 4 | jump pressed just before landing is remembered |
+| `BOUNCE_VELOCITY` | -0.85 | a pad throws you ~6 cells, well past a jump |
+| `ICE_ACCELERATION` / `ICE_FRICTION` | 0.03 / 0.015 | ice barely grips |
+| `CONVEYOR_SPEED` | 0.12 | about half a run, so a belt can be walked against |
+| `MOVER_TICKS` / `ENEMY_TICKS` | 6 | one whole cell per six ticks |
 
 `MAX_FALL_SPEED` being below 1.0 is load-bearing: a faster fall could move the
 player from above a one-cell floor to below it in a single tick without ever
@@ -122,15 +140,19 @@ exactly 16 rows tall, so there is no vertical camera.
 
 ## Screens
 
-**Menu.** `PLAY` and `LVLS` in 3x5 glyphs. Four characters at three pixels
-with one-pixel gaps is exactly 15 pixels, which is why the second word is
-abbreviated. The selected entry is bright green, the other dim. Up and Down
+**Menu.** `PLAY` and `LVLS` in a four-row, variable-width font. Three pixels
+is as narrow as a letter can be and still be read — at two, `A` has nowhere to
+put its crossbar and `V` and `Y` collapse into the same shape — so the width
+comes down by letting `L` be two columns wide rather than by shrinking every
+glyph past legibility. `PLAY` is 14x4 rather than 15x5, which leaves a margin
+and a spare column for a white marker beside the chosen entry. Up and Down
 move; Enter, Space or Right chooses.
 
-**Level picker.** A 4x3 grid of 3x3 tiles at x in {0,4,8,12} and y in
-{0,4,8}: green for completed, dim blue for not, a white pulse for the cursor.
-The selected level's number is drawn in digits on rows 11-15. Arrows move,
-Enter plays, Escape or Backspace returns to the menu.
+**Level picker.** One pixel per level, eight to a row, every other column and
+row: green for completed, dim blue for not, a white pulse for the cursor, and
+the number of the selected level below the grid. It holds forty. The 3x3 tiles
+this replaced were readable at twelve levels and ran out of panel well before
+twenty-seven.
 
 **Play.** The camera window, drawn back to front: platforms, spikes, coins,
 goal, player. The goal is dim grey until the last coin is taken, then flashing
@@ -174,12 +196,20 @@ window or a panel.
 - `test_platform_session.py` — every transition pushes a frame, in the shape
   the Life session tests use, plus one run driven through the real firmware
   over a pseudo-terminal.
-- `test_platform_levels.py` — a breadth-first search over the real physics
-  with quantised state, asserting that every coin and the goal can actually be
-  reached in each of the twelve levels. This is the test that makes the level
+- `test_platform_levels.py` — a best-first search over the real physics with
+  quantised state, asserting that a winning sequence of key presses exists for
+  every one of the twenty-seven levels. This is the test that makes the level
   set trustworthy: hand-drawn maps are easy to get subtly wrong, and a level
   whose last coin sits one cell too high is unwinnable in a way no amount of
-  reading the ASCII will reveal.
+  reading the ASCII will reveal. It has caught five so far.
+
+  Two things about the search are load-bearing. Its state key carries the
+  world's clock, the crumbled tiles and the portal latch, because once
+  platforms slide, standing in one place at two different moments is two
+  different situations. And it scores states by a flood fill over open ground
+  rather than by straight-line distance: guided by the latter it walks up to
+  the wall in `two-doors` and mills about, because the far side is close in a
+  way it cannot use. That change alone took the level from 15.5s to 0.1s.
 
 ## Wiring up
 

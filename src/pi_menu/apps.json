@@ -25,7 +25,7 @@
     {
       "id": "platformer",
       "name": "Platform Game",
-      "description": "A side-scrolling platform game on the Stellar Unicorn. Arrow keys run and jump; collect every coin to open the goal. Twelve levels, with a menu and a level picker on the panel itself.",
+      "description": "A side-scrolling platform game on the Stellar Unicorn. Arrow keys run and jump; collect every coin to open the goal. Twenty-seven levels with moving platforms, bounce pads, enemies, ice, conveyors, crumbling floors and portals. The menu and the level picker are drawn on the panel itself.",
       "command": [
         "{python}",
         "-m",
