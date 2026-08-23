@@ -26,6 +26,8 @@ from .level import Level
 LEFT = "left"
 RIGHT = "right"
 JUMP = "jump"
+#: Only used on ladders, where Up climbs instead of jumping.
+DOWN = "down"
 
 #: The simulation runs at a fixed rate; every constant below is per tick.
 TICK_HZ = 20
@@ -57,6 +59,11 @@ ICE_FRICTION = 0.015
 #: A conveyor is worth about half a run, so walking against one is slow
 #: going rather than impossible.
 CONVEYOR_SPEED = 0.12
+#: A ladder is slower than running and holds you still when you stop.
+LADDER_SPEED = 0.14
+#: An updraught lifts about as fast as a ladder climbs, and needs no
+#: holding on: step into the column and you rise.
+UPDRAFT_SPEED = -0.30
 
 #: How close the player's box must be to a tile to touch it. Coins and
 #: the goal are generous; spikes and enemies are not, so brushing one is
@@ -94,7 +101,8 @@ class World:
         self.won = False
         self.on_ground = False
         self.tick = 0
-        self._movers = self.level.mover_cells(0)
+        self.on_ladder = False
+        self._blocking = self._blocking_cells(0)
         self._drift = 0.0
         #: Crumbling tiles the player has already stepped off. Gone for
         #: the rest of the attempt.
@@ -121,6 +129,9 @@ class World:
     def mover_cells(self) -> frozenset:
         return self.level.mover_cells(self.tick)
 
+    def blinks_on(self) -> bool:
+        return self.level.blink_solid(self.tick)
+
     def enemy_cells(self) -> frozenset:
         return self.level.enemy_cells(self.tick)
 
@@ -134,12 +145,25 @@ class World:
         return (self.tick % self.level.period, self.crumbled, self._in_portal)
 
     def solid(self, x: int, y: int) -> bool:
-        """Solid right now, movers and crumbled tiles taken into account."""
+        """Solid right now: movers, blinking blocks and crumbled tiles included.
+
+        One-way platforms are deliberately absent. They are solid only
+        to somebody falling onto them, which is a question about the
+        player's movement rather than about the tile, so it is answered
+        in :meth:`_move_y` instead.
+        """
         if (x, y) in self.crumbled:
             return False
         if self.level.static_solid(x, y):
             return True
-        return (x, y) in self._movers
+        return (x, y) in self._blocking
+
+    def _blocking_cells(self, tick: int) -> frozenset:
+        """Everything solid at ``tick`` that is not part of the map."""
+        cells = self.level.mover_cells(tick)
+        if self.level.blinks and self.level.blink_solid(tick):
+            cells = cells | self.level.blinks
+        return cells
 
     # -- stepping --------------------------------------------------------
 
@@ -160,7 +184,7 @@ class World:
         """Move time on, and carry the player with any platform they ride."""
         was_on = self._movers_underfoot() if self.on_ground else ()
         self.tick += 1
-        self._movers = self.level.mover_cells(self.tick)
+        self._blocking = self._blocking_cells(self.tick)
 
         for mover in was_on:
             dx, dy = mover.step_delta(self.tick)
@@ -196,7 +220,14 @@ class World:
             self.y = float(min(cy for _, cy in overlapping)) - 1.0
             self.vy = min(self.vy, 0.0)
 
+    def _occupied(self) -> frozenset:
+        """The cells the player's box overlaps right now."""
+        return frozenset(
+            (column, row) for row in self._rows() for column in self._columns()
+        )
+
     def _apply_input(self, held: Container) -> None:
+        self.on_ladder = bool(self._occupied() & self.level.ladders)
         accelerate, slow = self._grip()
 
         direction = (RIGHT in held) - (LEFT in held)
@@ -206,6 +237,14 @@ class World:
             self.vx = _towards(self.vx, 0.0, slow)
 
         self._drift = CONVEYOR_SPEED * self._conveyor_push()
+
+        if self.on_ladder:
+            # A ladder holds you where you leave off, and Up climbs it
+            # rather than jumping: there is nothing to jump from.
+            self.vy = LADDER_SPEED * ((DOWN in held) - (JUMP in held))
+            self._jump_was_held = JUMP in held
+            self._jumping = False
+            return
 
         jump = JUMP in held
         if jump and not self._jump_was_held:
@@ -243,7 +282,13 @@ class World:
         return pushes[0] if pushes else 0
 
     def _apply_gravity(self) -> None:
+        if self.on_ladder:
+            return
         self.vy = min(self.vy + GRAVITY, MAX_FALL_SPEED)
+        if self._occupied() & self.level.updrafts:
+            # The column lifts you whatever you were doing, but it does
+            # not add to a jump: it sets a speed rather than a force.
+            self.vy = min(self.vy, UPDRAFT_SPEED)
 
     def _move_x(self) -> None:
         """Move horizontally, then push back out of anything hit.
@@ -271,11 +316,12 @@ class World:
                 self.vx = 0.0
 
     def _move_y(self) -> None:
+        before = self.y
         self.y += self.vy
         self.on_ground = False
         if self.vy > 0:
             row = math.floor(self.y + 1 - EPSILON)
-            if any(self.solid(column, row) for column in self._columns()):
+            if any(self._floor_at(column, row, before) for column in self._columns()):
                 self.y = row - 1.0
                 self.vy = 0.0
                 self.on_ground = True
@@ -284,6 +330,21 @@ class World:
             if any(self.solid(column, row) for column in self._columns()):
                 self.y = float(row + 1)
                 self.vy = 0.0
+
+    def _floor_at(self, column: int, row: int, before: float) -> bool:
+        """Is there something to land on here?
+
+        A one-way platform counts only if the player's feet were above
+        it before this step. That is what lets a jump pass up through it
+        and a fall stop on it, which is the whole point of the tile: a
+        tall level with no one-way platforms needs a gap beside every
+        upward route.
+        """
+        if self.solid(column, row):
+            return True
+        if (column, row) in self.level.one_way:
+            return before + 1 <= row + EPSILON
+        return False
 
     def _rows(self) -> Iterator:
         yield from range(math.floor(self.y), math.floor(self.y + 1 - EPSILON) + 1)

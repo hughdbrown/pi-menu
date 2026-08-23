@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from pi_menu.platformer.level import Level, LevelError
+from pi_menu.platformer.level import BLINK_TICKS, Level, LevelError
 
 SIMPLE = [
     "....................",
@@ -102,9 +102,26 @@ def test_ragged_rows_are_refused():
         Level("bad", _rows_with(0, "..."))
 
 
-def test_the_wrong_height_is_refused():
-    with pytest.raises(LevelError, match="16 rows"):
+def test_a_level_shorter_than_the_panel_is_refused():
+    with pytest.raises(LevelError, match="rows tall"):
         Level("bad", SIMPLE[:-1])
+
+
+def test_a_level_taller_than_two_panels_is_refused():
+    with pytest.raises(LevelError, match="rows tall"):
+        Level("bad", SIMPLE + ["." * 20] * 17)
+
+
+def test_a_level_may_be_taller_than_the_panel():
+    tall = ["." * 20] * 12 + SIMPLE
+    board = Level("tall", tall)
+
+    assert board.height == 28
+    assert board.is_tall is True
+
+
+def test_a_panel_height_level_is_not_tall():
+    assert level().is_tall is False
 
 
 def test_an_unknown_glyph_is_refused():
@@ -297,3 +314,110 @@ def test_a_single_unpaired_portal_is_refused():
     rows[15] = "=" * 20
     with pytest.raises(LevelError, match="pairs"):
         Level("lonely", rows)
+
+
+# -- ladders, one-way platforms, updraughts and blinking blocks ----------
+
+
+def _extras(row13: str, row14: str) -> Level:
+    rows = ["." * 20 for _ in range(16)]
+    rows[13] = row13.ljust(20, ".")
+    rows[14] = row14.ljust(20, "=")
+    rows[15] = "=" * 20
+    return Level("extras", rows)
+
+
+def test_a_ladder_is_not_solid():
+    board = _extras("..@..HHH.......G....", "=" * 20)
+
+    assert board.ladders == frozenset({(5, 13), (6, 13), (7, 13)})
+    assert board.static_solid(5, 13) is False
+
+
+def test_a_one_way_platform_is_not_solid_but_is_walkable():
+    board = _extras("..@.............G...", "==___===============")
+
+    assert board.one_way == frozenset({(2, 14), (3, 14), (4, 14)})
+    assert board.static_solid(3, 14) is False
+    assert board.walkable(3, 14) is True
+
+
+def test_an_updraught_is_not_solid():
+    board = _extras("..@..uuu.......G....", "=" * 20)
+
+    assert board.updrafts == frozenset({(5, 13), (6, 13), (7, 13)})
+    assert board.static_solid(6, 13) is False
+
+
+def test_a_blinking_block_comes_and_goes_on_a_cycle():
+    board = _extras("..@..xxx.......G....", "=" * 20)
+
+    assert board.blinks == frozenset({(5, 13), (6, 13), (7, 13)})
+    assert board.blink_solid(0) is True
+    assert board.blink_solid(BLINK_TICKS) is False
+    assert board.blink_solid(2 * BLINK_TICKS) is True
+
+
+def test_blinking_blocks_give_the_level_a_period():
+    board = _extras("..@..xxx.......G....", "=" * 20)
+
+    assert board.period == 2 * BLINK_TICKS
+    assert board.moves is True
+
+
+def test_an_enemy_will_walk_along_a_one_way_platform():
+    """Pathing counts one-way platforms as ground; solidity does not."""
+    rows = ["." * 20 for _ in range(16)]
+    rows[13] = "..@...=..E..=..G...."
+    rows[14] = "===_____============"
+    rows[15] = "=" * 20
+    board = Level("oneway", rows)
+
+    assert len(board.enemies[0].path) > 1
+
+
+# -- the boss ------------------------------------------------------------
+
+
+class FakeBoss:
+    name = "test-demon"
+
+
+def _boss_level(origin=(20, 4), boss=FakeBoss(), width=32):
+    rows = ["." * width for _ in range(16)]
+    rows[13] = ("..@" + "." * (width - 5) + "G")[:width]
+    rows[13] = rows[13][:width].ljust(width, ".")
+    rows[13] = "..@".ljust(width - 1, ".") + "G"
+    rows[14] = "=" * width
+    rows[15] = "=" * width
+    if origin is not None:
+        row = list(rows[origin[1]])
+        row[origin[0]] = "B"
+        rows[origin[1]] = "".join(row)
+    return Level("boss", rows, boss=boss)
+
+
+def test_a_boss_level_knows_where_the_demon_stands():
+    board = _boss_level()
+
+    assert board.boss_origin == (20, 4)
+    assert board.boss.name == "test-demon"
+
+
+def test_a_boss_glyph_with_no_kind_is_refused():
+    with pytest.raises(LevelError, match="only the glyph"):
+        _boss_level(boss=None)
+
+
+def test_a_boss_kind_with_no_glyph_is_refused():
+    with pytest.raises(LevelError, match="only the kind"):
+        _boss_level(origin=None)
+
+
+def test_a_boss_that_runs_off_the_map_is_refused():
+    with pytest.raises(LevelError, match="runs off the map"):
+        _boss_level(origin=(30, 4))
+
+
+def test_a_level_with_no_boss_has_none():
+    assert level().boss is None

@@ -11,11 +11,12 @@ from __future__ import annotations
 
 import pytest
 
-from pi_menu.platformer.level import Level
+from pi_menu.platformer.level import BLINK_TICKS, Level
 from pi_menu.platformer.world import (
     BOUNCE_VELOCITY,
     BUFFER_TICKS,
     COYOTE_TICKS,
+    DOWN,
     JUMP,
     JUMP_VELOCITY,
     LEFT,
@@ -717,3 +718,202 @@ def test_a_still_level_has_only_one_clock_reading():
     run(world, 40, {RIGHT})
 
     assert world.dynamic_key()[0] == 0
+
+
+# -- ladders -------------------------------------------------------------
+
+
+def _ladder_level() -> Level:
+    return level(
+        "....H...............",  # row 8
+        "....H...............",
+        "....H...............",
+        "....H...............",
+        "....H...............",
+        "..@.H...........G...",  # row 13
+        "=" * WIDE,
+        "=" * WIDE,
+    )
+
+
+def test_a_ladder_holds_you_up_when_you_stop_climbing():
+    world = World(_ladder_level())
+    settle(world)
+    run(world, 12, {RIGHT})  # walk to the ladder
+    run(world, 20, {JUMP})  # climb it
+    height = world.y
+    assert world.on_ladder, "never got onto the ladder"
+
+    run(world, 20)
+
+    assert world.y == pytest.approx(height), "they slid off the ladder"
+
+
+def test_up_climbs_a_ladder_rather_than_jumping():
+    world = World(_ladder_level())
+    settle(world)
+    run(world, 12, {RIGHT})
+    assert world.on_ladder, "never reached the ladder"
+    height = world.y
+
+    run(world, 20, {JUMP})
+
+    assert world.y < height - 2.0
+
+
+def test_down_climbs_back_down():
+    world = World(_ladder_level())
+    settle(world)
+    run(world, 12, {RIGHT})
+    run(world, 20, {JUMP})
+    top = world.y
+
+    run(world, 10, {DOWN})
+
+    assert world.y > top
+
+
+def test_stepping_off_a_ladder_sideways_drops_you():
+    world = World(_ladder_level())
+    settle(world)
+    run(world, 12, {RIGHT})
+    run(world, 20, {JUMP})
+
+    run(world, 20, {RIGHT})
+
+    assert world.on_ladder is False
+    assert world.on_ground is True
+
+
+def test_a_ladder_is_not_something_you_can_stand_on():
+    world = World(_ladder_level())
+
+    assert world.solid(4, 10) is False
+
+
+# -- one-way platforms ---------------------------------------------------
+
+
+def _one_way_level() -> Level:
+    return level(
+        "....................",  # row 10
+        "..___...............",  # row 11: the one-way platform
+        "....................",
+        "..@.............G...",
+        "=" * WIDE,
+        "=" * WIDE,
+    )
+
+
+def test_a_jump_passes_up_through_a_one_way_platform():
+    world = World(_one_way_level())
+    settle(world)
+
+    highest = world.y
+    for _ in range(40):
+        world.step({JUMP})
+        highest = min(highest, world.y)
+
+    assert highest < 11.0, "the platform blocked the jump"
+
+
+def test_a_fall_lands_on_a_one_way_platform():
+    world = World(_one_way_level())
+    world.x, world.y = 3.0, 8.0
+    world.vy = 0.0
+
+    run(world, 40)
+
+    assert world.on_ground is True
+    assert world.y == pytest.approx(10.0)
+
+
+def test_a_one_way_platform_does_not_block_you_sideways():
+    world = World(_one_way_level())
+    world.x, world.y = 0.0, 10.0
+
+    run(world, 20, {RIGHT})
+
+    assert world.x > 2.0
+
+
+# -- updraughts ----------------------------------------------------------
+
+
+def _updraft_level() -> Level:
+    """The column reaches the floor, so walking into it lifts you."""
+    return level(
+        "....uu..............",  # row 8
+        "....uu..............",
+        "....uu..............",
+        "....uu..............",
+        "....uu..............",
+        "..@.uu..........G...",  # row 13: the player walks in at floor level
+        "=" * WIDE,
+        "=" * WIDE,
+    )
+
+
+def test_an_updraught_lifts_you_while_you_are_in_it():
+    world = World(_updraft_level())
+    settle(world)
+    start = world.y
+
+    run(world, 30, {RIGHT})
+
+    assert world.y < start - 2.0
+
+
+def test_leaving_an_updraught_drops_you_again():
+    world = World(_updraft_level())
+    settle(world)
+    run(world, 30, {RIGHT})
+    lifted = world.y
+
+    run(world, 30, {RIGHT})
+
+    assert world.y > lifted
+
+
+def test_an_updraught_is_not_solid():
+    assert World(_updraft_level()).solid(4, 10) is False
+
+
+# -- blinking blocks -----------------------------------------------------
+
+
+def _blink_level() -> Level:
+    return level(
+        "..@.............G...",  # row 13
+        "=====xxxx===========",  # row 14: the blinking stretch
+        "=" * WIDE,  # row 15: solid ground below it
+    )
+
+
+def test_a_blinking_block_is_solid_for_half_its_cycle():
+    world = World(_blink_level())
+
+    assert world.solid(6, 14) is True
+    run(world, BLINK_TICKS)
+    assert world.solid(6, 14) is False
+    run(world, BLINK_TICKS)
+    assert world.solid(6, 14) is True
+
+
+def test_a_blinking_block_that_returns_pushes_you_out_rather_than_trapping_you():
+    world = World(_blink_level())
+    world.x, world.y = 6.0, 13.0
+
+    run(world, 2 * BLINK_TICKS + 2)
+
+    assert world.alive is True
+    assert not world.solid(*world.pixel), "the player ended up inside a block"
+
+
+def test_blinking_blocks_show_in_the_dynamic_key():
+    world = World(_blink_level())
+    first = world.dynamic_key()
+
+    run(world, BLINK_TICKS)
+
+    assert world.dynamic_key() != first
