@@ -15,6 +15,12 @@ Protocol (see pi_menu/display/protocol.py, which must agree):
     "SU" 0x02 <1 byte>        bright -> "K\\n"
     "SU" 0x04                 clear  -> "K\\n"
     "SU" 0x05                 exit   -> "K\\n", then quits to the REPL
+    "SU" 0x06 <5 bytes>       tone   -> "K\\n"
+    "SU" 0x07                 hush   -> "K\\n"
+
+The five tone bytes are channel, waveform, frequency high, frequency
+low, volume. Volume zero releases the note. The Pi decides every note
+and when it sounds; this only sets the registers.
 
 The 768 bytes are row-major RGB, x varying fastest, top-left first.
 
@@ -29,7 +35,7 @@ import time
 from picographics import DISPLAY_STELLAR_UNICORN, PicoGraphics
 from stellar import StellarUnicorn
 
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3
 
 WIDTH = 16
 HEIGHT = 16
@@ -43,12 +49,23 @@ CMD_BLIT = 0x01
 CMD_BRIGHTNESS = 0x02
 CMD_CLEAR = 0x04
 CMD_EXIT = 0x05
+CMD_TONE = 0x06
+CMD_HUSH = 0x07
+
+SYNTH_CHANNELS = 8
+TONE_BYTES = 5
 
 HELLO = b"STELLAR16 %d\n" % PROTOCOL_VERSION
 ACK = b"K\n"
 
 unicorn = StellarUnicorn()
 graphics = PicoGraphics(display=DISPLAY_STELLAR_UNICORN)
+
+#: Channels are configured the first time they are used and reused after.
+_channels = {}
+#: False once the synth has proved unavailable, so a board that cannot
+#: make a sound still shows pictures.
+_audio = True
 
 _stdin = sys.stdin.buffer
 _stdout = sys.stdout.buffer
@@ -101,6 +118,51 @@ def blit(frame):
     unicorn.update(graphics)
 
 
+def tone(channel, waveform, frequency, volume):
+    """Set one synth channel. Volume zero releases the note.
+
+    Wrapped in its own failure guard: a board or firmware build without
+    a working synth must still serve frames. A silent panel is a
+    disappointment; a dark one is a broken program.
+    """
+    global _audio
+    if not _audio or channel >= SYNTH_CHANNELS:
+        return
+    try:
+        voice = _channels.get(channel)
+        if voice is None:
+            voice = unicorn.synth_channel(channel)
+            _channels[channel] = voice
+        voice.configure(
+            waveforms=1 << waveform,
+            frequency=frequency,
+            volume=volume * 128,
+            attack=0.01,
+            decay=0.05,
+            sustain=0.8,
+            release=0.05,
+        )
+        if volume:
+            voice.trigger_attack()
+        else:
+            voice.trigger_release()
+        unicorn.play_synth()
+    except Exception:
+        _audio = False
+
+
+def hush():
+    """Silence every channel at once."""
+    if not _audio:
+        return
+    try:
+        for voice in _channels.values():
+            voice.trigger_release()
+        unicorn.stop_playing()
+    except Exception:
+        pass
+
+
 def clear():
     graphics.set_pen(graphics.create_pen(0, 0, 0))
     graphics.clear()
@@ -120,11 +182,19 @@ def handle(command):
     elif command == CMD_CLEAR:
         clear()
         reply(ACK)
+    elif command == CMD_TONE:
+        payload = read_exact(TONE_BYTES)
+        tone(payload[0], payload[1], (payload[2] << 8) | payload[3], payload[4])
+        reply(ACK)
+    elif command == CMD_HUSH:
+        hush()
+        reply(ACK)
     elif command == CMD_EXIT:
         # Step aside so the board can be re-flashed. Ctrl-C is restored
         # first, or the next tool along would have no way to interrupt
         # whatever runs after us.
         reply(ACK)
+        hush()
         time.sleep(0.1)  # let the reply reach the host before we go
         micropython.kbd_intr(3)
         raise SystemExit

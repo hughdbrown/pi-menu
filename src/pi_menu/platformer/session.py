@@ -16,6 +16,7 @@ from __future__ import annotations
 import enum
 from typing import Callable, Sequence
 
+from .. import music as chiptune
 from . import render, world as physics
 from .level import Level
 from .levels import LEVELS, title
@@ -60,8 +61,12 @@ class PlatformSession:
         sink: Sink,
         progress: Progress | None = None,
         levels: Sequence[Level] = LEVELS,
+        music: "chiptune.Player | None" = None,
     ) -> None:
         self.levels = tuple(levels)
+        # A player with nowhere to send notes is silent and harmless,
+        # which is what every machine without a panel gets.
+        self.music = music if music is not None else chiptune.Player()
         self.progress = progress if progress is not None else Progress()
         self.screen = Screen.MENU
         self.menu_entry = PLAY_ENTRY
@@ -75,6 +80,7 @@ class PlatformSession:
         self._held: set = set()
         self._countdown = 0
 
+        self._update_music()
         self.push()
 
     def _first_unfinished(self) -> int:
@@ -110,6 +116,7 @@ class PlatformSession:
         elif self.screen is Screen.PLAY and key == BACK:
             self._to_menu()
 
+        self._update_music()
         self.push()
 
     def release(self, key: str) -> None:
@@ -171,7 +178,35 @@ class PlatformSession:
         elif self.screen in (Screen.DEAD, Screen.WON):
             self._flash_tick()
 
+        self._update_music()
+        self.music.tick()
         self.push()
+
+    # -- what is playing -------------------------------------------------
+
+    def _update_music(self) -> None:
+        """Keep the tune in step with the screen.
+
+        Asking for the tune that is already playing does nothing, so this
+        is safe to call on every tick and there is no separate bookkeeping
+        about what changed.
+        """
+        self.music.play(self._tune_for_screen())
+
+    def _tune_for_screen(self):
+        if self.screen is Screen.DEAD:
+            return chiptune.DEATH
+        if self.screen is Screen.WON:
+            return chiptune.FANFARE
+        if self.screen is Screen.PLAY:
+            return chiptune.level_tune(
+                self.index, len(self.levels), self.levels[self.index].boss is not None
+            )
+        return chiptune.TITLE
+
+    def silence(self) -> None:
+        """Stop the music, for leaving the game."""
+        self.music.silence()
 
     def _play_tick(self) -> None:
         event = self.world.step(self._held)

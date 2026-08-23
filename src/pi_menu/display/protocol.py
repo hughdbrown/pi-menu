@@ -18,7 +18,7 @@ FRAME_BYTES = NUM_PIXELS * 3
 MAGIC = b"SU"
 
 #: Bumped whenever the Pi and the Pico must be updated together.
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3
 
 CMD_PING = 0x00
 CMD_BLIT = 0x01
@@ -33,6 +33,11 @@ CMD_CLEAR = 0x04
 #: board can be re-flashed. Without it, firmware that has disabled the
 #: interrupt character cannot be replaced over USB at all.
 CMD_EXIT = 0x05
+#: Sets one synth channel: waveform, pitch and volume. Volume zero
+#: releases the note rather than being a separate command.
+CMD_TONE = 0x06
+#: Silences every channel at once, for leaving a screen or quitting.
+CMD_HUSH = 0x07
 
 #: The Pico answers a ping with HELLO, a space, and its protocol version.
 HELLO = b"STELLAR16"
@@ -47,6 +52,20 @@ BAUD = 115200
 
 #: USB vendor id Raspberry Pi uses for the Pico family.
 PICO_VID = 0x2E8A
+
+#: The Stellar Unicorn's synth has eight channels; three is all the
+#: music uses -- a lead, a bass and a noise channel for percussion.
+SYNTH_CHANNELS = 8
+
+WAVE_SQUARE = 0
+WAVE_TRIANGLE = 1
+WAVE_SAW = 2
+WAVE_SINE = 3
+WAVE_NOISE = 4
+WAVEFORMS = (WAVE_SQUARE, WAVE_TRIANGLE, WAVE_SAW, WAVE_SINE, WAVE_NOISE)
+
+#: Frequencies travel as two bytes, so this is the highest note there is.
+MAX_FREQUENCY = 0xFFFF
 
 
 def encode_ping() -> bytes:
@@ -77,6 +96,35 @@ def encode_blit(framebuffer: bytes) -> bytes:
             f"framebuffer must be {FRAME_BYTES} bytes, got {len(framebuffer)}"
         )
     return MAGIC + bytes([CMD_BLIT]) + bytes(framebuffer)
+
+
+def encode_tone(
+    channel: int, waveform: int, frequency: int, volume: int
+) -> bytes:
+    """Encode a note. A volume of zero releases whatever was playing.
+
+    Frequency is in whole hertz, which is finer than the ear can pick
+    out at these pitches and saves a byte over sending millihertz.
+    """
+    if not 0 <= channel < SYNTH_CHANNELS:
+        raise ValueError(f"channel must be 0-{SYNTH_CHANNELS - 1}, got {channel}")
+    if waveform not in WAVEFORMS:
+        raise ValueError(f"unknown waveform {waveform}")
+    frequency = max(0, min(MAX_FREQUENCY, int(frequency)))
+    return MAGIC + bytes(
+        [
+            CMD_TONE,
+            channel,
+            waveform,
+            frequency >> 8,
+            frequency & 0xFF,
+            _clamp_byte(volume),
+        ]
+    )
+
+
+def encode_hush() -> bytes:
+    return MAGIC + bytes([CMD_HUSH])
 
 
 def parse_hello(line: bytes) -> int | None:

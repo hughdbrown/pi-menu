@@ -59,6 +59,24 @@ class Display(ABC):
         """Push the current framebuffer to the backend."""
         self._flush(bytes(self._buf))
 
+    def play_tone(
+        self, channel: int, waveform: int, frequency: int, volume: int
+    ) -> None:
+        """Sound one synth channel. A volume of zero releases the note.
+
+        Only the real panel has a speaker, so this does nothing by
+        default. Music is not worth failing a run over: an app that can
+        draw but not sing should still draw.
+        """
+
+    def hush(self) -> None:
+        """Silence every channel."""
+
+    @property
+    def has_audio(self) -> bool:
+        """True only where a note would actually be heard."""
+        return False
+
     def set_brightness(self, brightness: float) -> None:
         """Set brightness as a 0.0-1.0 fraction."""
         self._brightness = max(0.0, min(1.0, float(brightness)))

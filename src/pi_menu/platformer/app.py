@@ -17,6 +17,7 @@ import sys
 import tkinter as tk
 from tkinter import ttk
 
+from .. import music as chiptune
 from ..display import add_display_args, open_display
 from ..display.pump import FramePump
 from ..palette import BG, FG, MUTED, WARN
@@ -38,7 +39,9 @@ class PlatformApp:
     def __init__(self, root: tk.Tk, pump: FramePump) -> None:
         self.root = root
         self.pump = pump
-        self.session = PlatformSession(pump.submit)
+        self.session = PlatformSession(
+            pump.submit, music=chiptune.Player(pump.play_tone)
+        )
         self.keys = HeldKeys()
 
         self._after_id: str | None = None
@@ -173,6 +176,7 @@ class PlatformApp:
 
     def quit(self) -> None:
         self._cancel_tick()
+        self.session.silence()
         self.root.destroy()
 
 

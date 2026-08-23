@@ -48,6 +48,24 @@ class FakeGraphics:
         self.pixels = {(x, y): self.pen for x in range(16) for y in range(16)}
 
 
+class FakeChannel:
+    """Stands in for one of the Pico synth's channels."""
+
+    def __init__(self):
+        self.settings = None
+        self.attacks = 0
+        self.releases = 0
+
+    def configure(self, **settings):
+        self.settings = settings
+
+    def trigger_attack(self):
+        self.attacks += 1
+
+    def trigger_release(self):
+        self.releases += 1
+
+
 class FakeUnicorn:
     """Stands in for StellarUnicorn."""
 
@@ -55,6 +73,9 @@ class FakeUnicorn:
         self.brightness = None
         self.updates = 0
         self.pressed = False
+        self.channels = {}
+        self.playing = False
+        self.stops = 0
 
     def set_brightness(self, value):
         self.brightness = value
@@ -64,6 +85,16 @@ class FakeUnicorn:
 
     def is_pressed(self, switch):
         return self.pressed
+
+    def synth_channel(self, index):
+        return self.channels.setdefault(index, FakeChannel())
+
+    def play_synth(self):
+        self.playing = True
+
+    def stop_playing(self):
+        self.playing = False
+        self.stops += 1
 
 
 class MicroPythonDriver:

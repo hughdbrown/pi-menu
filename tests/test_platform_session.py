@@ -522,3 +522,101 @@ def test_a_level_can_be_finished_by_pressing_keys(tmp_path, index):
 
     assert game.screen is Screen.WON
     assert game.progress.is_done(chosen.id)
+
+
+# -- the music -----------------------------------------------------------
+
+
+class MusicRecorder:
+    """Collects the notes a session's music sends."""
+
+    def __init__(self):
+        self.notes = []
+
+    def __call__(self, channel, waveform, hertz, volume):
+        self.notes.append((channel, waveform, hertz, volume))
+
+
+@pytest.fixture
+def musical(tmp_path):
+    from pi_menu import music as chiptune
+
+    notes = MusicRecorder()
+    game = PlatformSession(
+        Recorder(),
+        progress=Progress(tmp_path / "p.json"),
+        music=chiptune.Player(notes),
+    )
+    return game, notes
+
+
+def test_the_menu_plays_the_title_tune(musical):
+    from pi_menu import music as chiptune
+
+    game, _ = musical
+
+    assert game.music.tune is chiptune.TITLE
+
+
+def test_starting_a_level_changes_the_tune(musical):
+    from pi_menu import music as chiptune
+
+    game, _ = musical
+    game.press(SELECT)
+
+    assert game.music.tune is not chiptune.TITLE
+
+
+def test_the_last_level_plays_the_finale(musical):
+    from pi_menu import music as chiptune
+
+    game, _ = musical
+    game.index = len(LEVELS) - 1
+    game.press(SELECT)
+
+    assert game.music.tune is chiptune.FINALE
+
+
+def test_dying_plays_the_death_sting(playing_musical):
+    from pi_menu import music as chiptune
+
+    game = playing_musical
+    game.world.y = float(game.world.level.height)
+    game.tick()
+
+    assert game.music.tune is chiptune.DEATH
+
+
+def test_a_tick_moves_the_music_on(musical):
+    game, notes = musical
+    before = len(notes.notes)
+
+    for _ in range(30):
+        game.tick()
+
+    assert len(notes.notes) > before
+
+
+def test_leaving_the_game_silences_the_panel(musical):
+    game, notes = musical
+    for _ in range(10):
+        game.tick()
+    notes.notes.clear()
+
+    game.silence()
+
+    assert notes.notes
+    assert all(note[3] == 0 for note in notes.notes)
+
+
+@pytest.fixture
+def playing_musical(tmp_path):
+    from pi_menu import music as chiptune
+
+    game = PlatformSession(
+        Recorder(),
+        progress=Progress(tmp_path / "p.json"),
+        music=chiptune.Player(MusicRecorder()),
+    )
+    game.press(SELECT)
+    return game

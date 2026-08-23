@@ -136,6 +136,20 @@ class SerialDisplay(Display):
         self._serial.write(proto.encode_brightness(round(brightness * 255)))
         self._await_ack()
 
+    def play_tone(
+        self, channel: int, waveform: int, frequency: int, volume: int
+    ) -> None:
+        self._serial.write(proto.encode_tone(channel, waveform, frequency, volume))
+        self._await_ack()
+
+    def hush(self) -> None:
+        self._serial.write(proto.encode_hush())
+        self._await_ack()
+
+    @property
+    def has_audio(self) -> bool:
+        return True
+
     def _await_ack(self) -> None:
         """Read one ack line, tolerating a slow or silent panel.
 
