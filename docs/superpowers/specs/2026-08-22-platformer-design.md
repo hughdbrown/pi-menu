@@ -75,9 +75,9 @@ floored to integers only when drawing.
 
 | Constant | Value | Effect |
 | --- | --- | --- |
-| `GRAVITY` | 0.055 | ~3.5 cells of rise from a full jump |
-| `JUMP_VELOCITY` | -0.62 | apex after 11 ticks, a little over half a second |
-| `CUT_JUMP_VELOCITY` | -0.40 | releasing Up early gives ~1.5 cells |
+| `GRAVITY` | 0.055 | ~3.6 cells of rise from a full jump |
+| `JUMP_VELOCITY` | -0.66 | apex after 12 ticks, a little over half a second |
+| `CUT_JUMP_VELOCITY` | -0.34 | releasing Up early gives ~1.5 cells |
 | `RUN_SPEED` | 0.22 | ~4.4 cells a second |
 | `ACCELERATION` | 0.11 | full speed in two ticks |
 | `FRICTION` | 0.11 | stop in two ticks |
@@ -94,12 +94,23 @@ and push out of anything hit, then move in y and push out again. Doing both at
 once makes a player moving diagonally into a corner pick the wrong axis to
 resolve and either stick or pass through.
 
+Contact is measured by distance, not by overlap: a coin or the goal is taken
+within 0.8 of a cell, a spike kills only within 0.6. Spikes being the tighter
+of the two is deliberate -- brushing one should be survivable and walking
+into one should not.
+
 Coyote time and jump buffering are not polish. On a screen 16 pixels tall a
 jump missed by one tick is a death, and without them the game reads as broken
 rather than hard.
 
-The reachable envelope that follows from these numbers: about 3.5 cells of
-height, and about 4.8 cells of gap cleared from a running start. Levels are
+These are not the values a continuous formula suggests. Integrating in
+discrete ticks loses height to the first tick of gravity, so the -0.62 that
+should give 3.5 cells actually gives 3.19 -- close enough to a three-cell
+ledge to make it a coin flip. The constants above are the ones the tests
+measure, not the ones the algebra predicts.
+
+The reachable envelope that follows from these numbers: about 3.6 cells of
+height, and about 5 cells of gap cleared from a running start. Levels are
 built to gaps of at most 3 and ledges of at most 3, which leaves margin for a
 player who is not frame-perfect.
 
