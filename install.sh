@@ -19,8 +19,8 @@ BIN_DIR="$HOME/.local/bin"
 DESKTOP_DIR="$HOME/.local/share/applications"
 CONFIG_DIR="$HOME/.config/pi-menu"
 
-COMMANDS=(pi-menu pi-life pi-imgshow pi-menu-doctor pi-menu-flash)
-DESKTOP_FILES=(pi-menu.desktop pi-life.desktop pi-imgshow.desktop)
+COMMANDS=(pi-menu pi-life pi-imgshow pi-platformer pi-menu-doctor pi-menu-flash)
+DESKTOP_FILES=(pi-menu.desktop pi-life.desktop pi-imgshow.desktop pi-platformer.desktop)
 
 PROMPT=1
 
@@ -190,9 +190,9 @@ install_desktop_entries() {
         "Utility;" \
         false
 
-    # These two run with Terminal=true so that starting them straight from
-    # the Pi menu still shows the connection messages, exactly as it does
-    # when Pi Menu launches them.
+    # These three run with Terminal=true so that starting them straight
+    # from the Pi menu still shows the connection messages, exactly as it
+    # does when Pi Menu launches them.
     write_desktop_entry pi-life.desktop \
         "Game of Life (Stellar Unicorn)" \
         "Conway's Game of Life on a 16x16 LED panel" \
@@ -207,6 +207,14 @@ install_desktop_entries() {
         "$VENV/bin/pi-imgshow" \
         image-x-generic \
         "Graphics;Viewer;" \
+        true
+
+    write_desktop_entry pi-platformer.desktop \
+        "Platform Game (Stellar Unicorn)" \
+        "Arrow-key platform game on a 16x16 LED panel" \
+        "$VENV/bin/pi-platformer" \
+        applications-games \
+        "Game;ArcadeGame;" \
         true
 }
 
@@ -287,6 +295,7 @@ main() {
       pi-menu        the launcher
       pi-life        Conway's Game of Life
       pi-imgshow     the image shower
+      pi-platformer  the platform game
       pi-menu-flash  copy the frame server onto the panel
       pi-menu-doctor check the link to the panel, layer by layer
 

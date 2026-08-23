@@ -23,6 +23,17 @@
       "hold": "on-error"
     },
     {
+      "id": "platformer",
+      "name": "Platform Game",
+      "description": "A side-scrolling platform game on the Stellar Unicorn. Arrow keys run and jump; collect every coin to open the goal. Twelve levels, with a menu and a level picker on the panel itself.",
+      "command": [
+        "{python}",
+        "-m",
+        "pi_menu.platformer.app"
+      ],
+      "hold": "on-error"
+    },
+    {
       "id": "doctor",
       "name": "Panel Self-Test",
       "description": "Check the link to the Stellar Unicorn one layer at a time, then light the panel up. Run this first when the panel stays dark.",

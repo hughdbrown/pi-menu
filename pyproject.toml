@@ -22,6 +22,7 @@ pi-menu-doctor = "pi_menu.doctor:main"
 pi-menu-flash = "pi_menu.flash:main"
 pi-life = "pi_menu.life.app:main"
 pi-imgshow = "pi_menu.imgshow.app:main"
+pi-platformer = "pi_menu.platformer.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

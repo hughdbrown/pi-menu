@@ -1,6 +1,6 @@
 # Pi Menu — Stellar Unicorn applications
 
-Three programs for a Raspberry Pi with a [Pimoroni Stellar
+Programs for a Raspberry Pi with a [Pimoroni Stellar
 Unicorn](https://shop.pimoroni.com/products/space-unicorns) (16×16 RGB LED
 panel) attached over USB:
 
@@ -9,6 +9,7 @@ panel) attached over USB:
 | **Pi Menu** (`pi-menu`) | Lists the other programs and runs the one you pick in a terminal window. |
 | **Game of Life** (`pi-life`) | Conway's Game of Life on the panel, with start/stop/reset/random and a 16×16 grid you draw on. |
 | **Image Shower** (`pi-imgshow`) | Pick an image file and show it on the panel. PNG, JPEG, BMP, WebP and animated GIF. |
+| **Platform Game** (`pi-platformer`) | A side-scrolling platform game played with the arrow keys. Twelve levels, and a menu drawn on the panel itself. |
 | **Panel Self-Test** (`pi-menu-doctor`) | Checks every layer between the Pi and the LEDs, then lights the panel up. Run this first when the panel stays dark. |
 | **Flash Panel Firmware** (`pi-menu-flash`) | Copies the frame server onto the Stellar Unicorn's Pico over USB. Needs nothing but pyserial. |
 
@@ -22,20 +23,20 @@ The Stellar Unicorn is a Raspberry Pi **Pico W**, not a Pi HAT, so the two
 boards talk over USB:
 
 ```
-Raspberry Pi                                Stellar Unicorn (Pico W)
-┌────────────────────────────┐   USB CDC    ┌──────────────────────┐
-│ pi-menu ──launches──▶      │ ──frames──▶  │ stellar_frame_server │
-│   pi-life     (Life rules) │              │        │             │
-│   pi-imgshow  (scaling)    │ ◀── acks ─── │        ▼             │
-└────────────────────────────┘              │   16×16 RGB LEDs     │
-        all the logic                       └──────────────────────┘
-                                                 just blits frames
+Raspberry Pi                                  Stellar Unicorn (Pico W)
+┌──────────────────────────────┐   USB CDC    ┌──────────────────────┐
+│ pi-menu ──launches──▶        │ ──frames──▶  │ stellar_frame_server │
+│   pi-life       (Life rules) │              │        │             │
+│   pi-imgshow    (scaling)    │ ◀── acks ─── │        ▼             │
+│   pi-platformer (physics)    │              │   16×16 RGB LEDs     │
+└──────────────────────────────┘              └──────────────────────┘
+         all the logic                           just blits frames
 ```
 
 Every decision is made on the Pi, which sends complete 768-byte frames. The
 Pico only paints them. That keeps the firmware trivial and means the Life
-rules and the image scaling are ordinary Python that runs — and is tested —
-without any hardware.
+rules, the image scaling and the platform game's physics are ordinary Python
+that runs — and is tested — without any hardware.
 
 ## Installing
 
@@ -115,9 +116,31 @@ together. Three scale modes decide what happens to a non-square image:
 **Stretch** distorts it to fill the panel. Animated GIFs play at their own
 frame timings; untick Animate for just the first frame.
 
+### Platform Game
+
+Everything is on the panel — there is nothing to look at in the window. Keep
+it focused, because it is what holds the keyboard.
+
+- **Left** and **Right** run, **Up** jumps. Holding Up jumps higher than
+  tapping it.
+- **Enter** chooses, **Esc** goes back. From a level, Esc returns to the menu.
+- The menu is two words: **PLAY** carries on from the first level you have not
+  finished, **LVLS** opens the picker — a tile per level, green once it is
+  done, with the number of the one under the cursor below the grid.
+- **Collect every coin to open the goal**, then reach it. The goal is dim grey
+  until the last coin is taken, then it flashes green.
+- Red is a spike and will kill you, as will falling off the bottom. There are
+  no lives: the level simply starts again.
+
+The jump is deliberately forgiving. It still fires for a few hundredths of a
+second after you walk off a ledge, and one pressed just before you land is
+remembered and fires on landing. On a screen sixteen pixels tall, a jump
+missed by one frame is a death, and without that the game reads as broken
+rather than hard.
+
 ### No panel attached?
 
-Both apps fall back to an ANSI preview in their terminal rather than refusing
+The apps fall back to an ANSI preview in their terminal rather than refusing
 to start — handy for working on the code away from the hardware. The fallback
 announces itself in a banner you cannot miss, and each window carries an
 **Output:** line naming the device it is really drawing on, because a preview
@@ -191,6 +214,13 @@ python3 -m venv .venv
 The tests need no hardware. `tests/test_firmware_link.py` runs the real
 firmware against a pseudo-terminal with the Pimoroni modules stubbed, so
 both halves of the protocol are exercised together.
+
+`tests/test_platform_levels.py` is worth knowing about: it plays every level
+of the platform game with a search that steps the real physics, and passes
+only when it finds a sequence of key presses that finishes the level. A map
+can be well formed, readable and still impossible — a coin one cell above the
+jump arc looks exactly like a coin one cell below it — so a new or edited
+level that cannot be won fails the suite rather than the player.
 
 ## Troubleshooting
 

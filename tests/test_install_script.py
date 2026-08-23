@@ -60,13 +60,30 @@ def test_an_unknown_option_is_refused():
     assert "unknown option" in result.stderr
 
 
-def test_desktop_entries_are_written_for_all_three_apps(tmp_path):
+def test_desktop_entries_are_written_for_every_windowed_app(tmp_path):
     result = run_bash("install_desktop_entries", tmp_path)
     assert result.returncode == 0, result.stderr
 
     applications = tmp_path / ".local" / "share" / "applications"
     written = sorted(path.name for path in applications.glob("*.desktop"))
-    assert written == ["pi-imgshow.desktop", "pi-life.desktop", "pi-menu.desktop"]
+    assert written == [
+        "pi-imgshow.desktop",
+        "pi-life.desktop",
+        "pi-menu.desktop",
+        "pi-platformer.desktop",
+    ]
+
+
+def test_the_platform_game_is_installed_as_a_game(tmp_path):
+    run_bash("install_desktop_entries", tmp_path)
+    entry = (tmp_path / ".local/share/applications/pi-platformer.desktop").read_text()
+
+    fields = dict(
+        line.split("=", 1) for line in entry.strip().splitlines()[1:] if "=" in line
+    )
+    assert fields["Categories"] == "Game;ArcadeGame;"
+    assert fields["Exec"].endswith("/venv/bin/pi-platformer")
+    assert fields["Terminal"] == "true"
 
 
 def test_a_desktop_entry_has_the_fields_a_menu_needs(tmp_path):

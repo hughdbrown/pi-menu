@@ -115,3 +115,13 @@ def test_list_reports_a_broken_app_file_instead_of_crashing(tmp_path, monkeypatc
 
     assert launcher.main(["--list"]) == 1
     assert "not valid JSON" in capsys.readouterr().err
+
+
+def test_list_offers_the_platform_game(capsys):
+    launcher = importlib.import_module("pi_menu.launcher")
+
+    assert launcher.main(["--list"]) == 0
+
+    output = capsys.readouterr().out
+    assert "Platform Game" in output
+    assert "pi_menu.platformer.app" in output

@@ -15,7 +15,13 @@ def write(tmp_path, payload):
 
 def test_the_packaged_app_list_offers_the_apps_and_the_setup_tools():
     apps = load_apps()
-    assert {app.id for app in apps} == {"life", "imgshow", "doctor", "flash"}
+    assert {app.id for app in apps} == {
+        "life",
+        "imgshow",
+        "platformer",
+        "doctor",
+        "flash",
+    }
 
 
 def test_the_packaged_commands_point_at_real_importable_modules():
