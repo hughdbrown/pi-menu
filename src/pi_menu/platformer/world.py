@@ -20,6 +20,7 @@ import enum
 import math
 from typing import Container, Iterator
 
+from . import bosses
 from .level import Level
 
 #: Names for the keys, so nothing downstream has to know about Tk.
@@ -102,6 +103,10 @@ class World:
         self.on_ground = False
         self.tick = 0
         self.on_ladder = False
+        #: None until the player walks into the arena, then counts up.
+        self.boss_tick = None
+        self.boss_done = self.level.boss is None
+        self.fist_aim = 0
         self._blocking = self._blocking_cells(0)
         self._drift = 0.0
         #: Crumbling tiles the player has already stepped off. Gone for
@@ -118,8 +123,12 @@ class World:
 
     @property
     def goal_open(self) -> bool:
-        """The goal only opens once every coin has been collected."""
-        return not self.coins
+        """Every coin collected, and the demon seen off if there is one."""
+        return not self.coins and self.boss_done
+
+    @property
+    def boss_fighting(self) -> bool:
+        return self.boss_tick is not None
 
     @property
     def pixel(self) -> tuple:
@@ -141,8 +150,19 @@ class World:
         The solver needs this to tell two states apart: the same player
         standing in the same place with a platform under them and with
         one about to leave is not the same situation.
+
+        The fight goes in whole, not modulo anything. A boss fight is a
+        script with an end rather than a cycle, and where you are in it
+        is the difference between one more wave and the goal opening.
         """
-        return (self.tick % self.level.period, self.crumbled, self._in_portal)
+        return (
+            self.tick % self.level.period,
+            self.crumbled,
+            self._in_portal,
+            self.boss_tick,
+            self.fist_aim if self.boss_tick is not None else 0,
+            self.boss_done,
+        )
 
     def solid(self, x: int, y: int) -> bool:
         """Solid right now: movers, blinking blocks and crumbled tiles included.
@@ -173,6 +193,7 @@ class World:
             return Event.NONE
 
         self._advance_clock()
+        self._advance_fight()
         self._apply_input(held)
         self._apply_gravity()
         self._move_x()
@@ -193,6 +214,91 @@ class World:
             break  # one platform at a time; they never overlap
 
         self._push_out_of_anything_that_moved_into_us()
+
+    # -- the fight -------------------------------------------------------
+
+    def _advance_fight(self) -> None:
+        """Move the demon's script on, and aim its next fist.
+
+        The fists are the only thing in the game that looks at where the
+        player is. Everything else -- the fireballs here included -- is a
+        function of the clock, which is what keeps the rest of a boss
+        level as cheap to verify as any other.
+        """
+        boss = self.level.boss
+        if boss is None or self.boss_done:
+            return
+
+        if self.boss_tick is None:
+            if self.x < self.level.boss_origin[0] - bosses.ARENA_LEAD:
+                return  # not in the arena yet
+            self.boss_tick = 0
+        else:
+            self.boss_tick += 1
+
+        if self.boss_tick >= boss.duration:
+            # It has thrown everything it has. It withdraws for good.
+            self.boss_tick = None
+            self.boss_done = True
+            return
+
+        wave, within = boss.wave_at(self.boss_tick)
+        if within % wave.fist_period == 0:
+            self.fist_aim = (
+                int(round(self.x / bosses.AIM_STEP)) * bosses.AIM_STEP
+            )
+
+    def fist_cells(self) -> frozenset:
+        """Where the fist is, if one is out."""
+        if self.boss_tick is None:
+            return frozenset()
+        wave, within = self.level.boss.wave_at(self.boss_tick)
+        phase = within % wave.fist_period
+        if phase >= bosses.FIST_TOTAL:
+            return frozenset()
+
+        floor = self._fist_floor(self.fist_aim)
+        top_of_fall = -bosses.FIST_HEIGHT
+        buried = floor - bosses.FIST_HEIGHT
+        if phase < bosses.FIST_FALL:
+            share = phase / bosses.FIST_FALL
+        elif phase < bosses.FIST_FALL + bosses.FIST_HOLD:
+            share = 1.0
+        else:
+            done = phase - bosses.FIST_FALL - bosses.FIST_HOLD
+            share = 1.0 - done / bosses.FIST_RISE
+        top = int(round(top_of_fall + share * (buried - top_of_fall)))
+
+        half = bosses.FIST_WIDTH // 2
+        return frozenset(
+            (x, y)
+            for x in range(self.fist_aim - half, self.fist_aim + half + 1)
+            for y in range(top, top + bosses.FIST_HEIGHT)
+            if 0 <= y < self.level.height
+        )
+
+    def _fist_floor(self, column: int) -> int:
+        """The topmost solid row in a column, which is what a fist hits."""
+        for y in range(self.level.height):
+            if self.level.static_solid(column, y):
+                return y
+        return self.level.height
+
+    def fireball_cells(self) -> frozenset:
+        """Every fireball in the air right now."""
+        if self.boss_tick is None:
+            return frozenset()
+        wave, within = self.level.boss.wave_at(self.boss_tick)
+        mouth_x = self.level.boss_origin[0] + 3
+        cells = set()
+        for ball in wave.fireballs:
+            travelled = within - ball.offset
+            if travelled < 0:
+                continue
+            x = int(round(mouth_x + ball.speed * travelled))
+            if 0 <= x < self.level.width:
+                cells.add((x, ball.row))
+        return frozenset(cells)
 
     def _movers_underfoot(self) -> list:
         """The moving platforms holding the player up, before time moved."""
@@ -382,7 +488,12 @@ class World:
             self.alive = False
             return Event.DIED
 
-        deadly = self.level.spikes | self.enemy_cells()
+        deadly = (
+            self.level.spikes
+            | self.enemy_cells()
+            | self.fist_cells()
+            | self.fireball_cells()
+        )
         if any(self._touching(cell, HAZARD_REACH) for cell in deadly):
             self.alive = False
             return Event.DIED

@@ -359,3 +359,129 @@ def test_a_two_digit_level_number_is_shown():
 
     assert digits, "no number under the grid"
     assert max(digits) - min(digits) + 1 == font.text_width("27")
+
+
+# -- the vertical camera -------------------------------------------------
+
+
+def tall_level() -> Level:
+    rows = ["." * WIDE for _ in range(32)]
+    rows[3] = "..............G....."
+    rows[4] = "=" * WIDE
+    rows[29] = "..@................."
+    rows[30] = "=" * WIDE
+    rows[31] = "=" * WIDE
+    return Level("tall", rows)
+
+
+def test_a_tall_level_scrolls_vertically():
+    world = World(tall_level())
+    low = render.draw_world(world)
+    world.y = 5.0
+    high = render.draw_world(world)
+
+    assert low != high, "the window never moved"
+
+
+def test_the_player_is_always_somewhere_on_the_panel():
+    world = World(tall_level())
+    for y in (3.0, 10.0, 20.0, 29.0):
+        world.y = y
+        frame = render.draw_world(world)
+        assert render.PLAYER in {
+            colour_at(frame, x, py) for py in range(HEIGHT) for x in range(WIDTH)
+        }, f"the player vanished at y={y}"
+
+
+# -- the new blocks ------------------------------------------------------
+
+
+def test_ladders_updraughts_and_blinks_each_get_a_colour():
+    rows = ["." * WIDE for _ in range(16)]
+    rows[12] = "..H..u..xx.........."
+    rows[13] = "..H..u.........G...."
+    rows[14] = "=" * WIDE
+    rows[13] = "..H..u..@......G...."
+    rows[15] = "=" * WIDE
+    world = World(Level("blocks", rows))
+
+    frame = render.draw_world(world, phase=0)
+
+    assert colour_at(frame, 2, 12) == render.LADDER
+    assert colour_at(frame, 5, 12) == render.UPDRAFT
+    assert colour_at(frame, 8, 12) == render.BLINK_ON
+
+
+def test_a_one_way_platform_does_not_look_like_solid_ground():
+    rows = ["." * WIDE for _ in range(16)]
+    rows[13] = "..@.............G..."
+    rows[14] = "==___==============="
+    rows[15] = "=" * WIDE
+    world = World(Level("oneway", rows))
+
+    frame = render.draw_world(world)
+
+    assert colour_at(frame, 3, 14) == render.ONE_WAY
+    assert colour_at(frame, 0, 14) == render.PLATFORM
+
+
+# -- the demon -----------------------------------------------------------
+
+
+def boss_arena():
+    from pi_menu.platformer.bosses import IMP
+
+    rows = ["." * 48 for _ in range(16)]
+    rows[13] = "..@" + "." * 43 + "G."
+    rows[4] = "." * 20 + "B" + "." * 27
+    rows[14] = "=" * 48
+    rows[15] = "=" * 48
+    return Level("arena", rows, boss=IMP), IMP
+
+
+def test_the_demon_is_drawn_behind_the_level():
+    level, _ = boss_arena()
+    world = World(level)
+    world.x = 24.0
+
+    frame = render.draw_world(world)
+    lit_cells = lit(frame)
+
+    assert lit_cells, "nothing was drawn"
+    # The floor is drawn over the demon, never the other way round.
+    assert colour_at(frame, 8, 14) == render.PLATFORM
+
+
+def test_the_demon_shows_while_it_is_up_and_goes_when_it_withdraws():
+    level, _ = boss_arena()
+    world = World(level)
+    world.x = 22.0
+
+    present = lit(render.draw_world(world))
+    world.boss_done = True
+    gone = lit(render.draw_world(world))
+
+    assert len(present) > len(gone), "the demon did not withdraw"
+
+
+def test_a_fist_and_a_fireball_are_drawn_in_front():
+    from pi_menu.platformer import bosses as boss_module
+
+    level, imp = boss_arena()
+    world = World(level)
+    world.x = float(level.boss_origin[0] - boss_module.ARENA_LEAD)
+    world.y = 13.0
+    world.step(frozenset())
+
+    seen = set()
+    for _ in range(imp.waves[0].ticks):
+        world.step(frozenset())
+        world.alive = True
+        world.y = 13.0
+        frame = render.draw_world(world)
+        seen |= {
+            colour_at(frame, x, y) for y in range(HEIGHT) for x in range(WIDTH)
+        }
+
+    assert render.FIST in seen
+    assert render.FIREBALL in seen
