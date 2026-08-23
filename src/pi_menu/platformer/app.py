@@ -96,7 +96,14 @@ class PlatformApp:
             row=4, column=0, sticky="w", pady=(14, 0)
         )
         scale = ttk.Scale(
-            outer, from_=5, to=100, orient="horizontal", command=self._on_brightness
+            outer,
+            from_=5,
+            to=100,
+            orient="horizontal",
+            command=self._on_brightness,
+            # Nothing else may take focus: an arrow key that moved the
+            # slider instead of the player would look like a dead game.
+            takefocus=False,
         )
         scale.set(self.brightness.get())
         scale.grid(row=5, column=0, sticky="ew")
@@ -111,7 +118,7 @@ class PlatformApp:
             style="Muted.TLabel" if panel.is_panel else "Warn.TLabel",
         ).grid(row=6, column=0, sticky="w", pady=(12, 0))
 
-        ttk.Button(outer, text="Quit", command=self.quit).grid(
+        ttk.Button(outer, text="Quit", command=self.quit, takefocus=False).grid(
             row=7, column=0, sticky="e", pady=(12, 0)
         )
 

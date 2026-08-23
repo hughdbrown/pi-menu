@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from pi_menu.display.protocol import FRAME_BYTES
+from pi_menu.platformer import world as physics
 from pi_menu.platformer import render
 from pi_menu.platformer.levels import LEVELS
 from pi_menu.platformer.progress import Progress
@@ -270,13 +271,30 @@ def test_every_tick_pushes_a_frame(playing):
     assert len(recorder.frames) == before + 2
 
 
-def test_starting_a_level_forgets_keys_held_in_the_menu(session):
+def test_a_key_still_held_when_the_level_starts_stays_held(session):
+    """The window only reports a press when a key goes from up to down.
+
+    So dropping held keys here would leave the player unable to move
+    until they let go of a key they were already holding.
+    """
     game, _ = session
-    game.press(RIGHT)  # nudging the menu
+    game.press(RIGHT)
 
     game.press(SELECT)
 
-    assert game.held == frozenset()
+    assert game.held == frozenset({physics.RIGHT})
+
+
+def test_a_key_held_through_a_death_survives_the_restart(playing):
+    game, _ = playing
+    game.press(RIGHT)
+    held = game.held
+
+    _die(game)
+    for _ in range(FLASH_TICKS + 1):
+        game.tick()
+
+    assert game.held == held
 
 
 def test_back_abandons_the_level_for_the_menu(playing):
@@ -459,3 +477,44 @@ def test_the_game_reaches_the_real_panel(pico, tmp_path):
         assert firmware.graphics.pixels[(player_x, player_y)] == render.PLAYER
     finally:
         display.close()
+
+
+# -- one whole level, through the keys the player actually presses -------
+
+
+def test_a_level_can_be_finished_by_pressing_keys(tmp_path):
+    """The solver finds the route; this proves the plumbing carries it.
+
+    Everything else here pokes the session's state directly. This takes
+    the winning move sequence for level one and replays it as presses
+    and releases through the same path the window uses, so a mistake in
+    the key mapping, the held-key set or the tick order shows up as a
+    level that cannot be completed.
+    """
+    from platform_solver import HOLD_TICKS, solve
+
+    to_session = {physics.LEFT: LEFT, physics.RIGHT: RIGHT, physics.JUMP: UP}
+    recorder = Recorder()
+    game = PlatformSession(
+        recorder, progress=Progress(tmp_path / "p.json"), levels=LEVELS[:1]
+    )
+    game.press(SELECT)
+    assert game.screen is Screen.PLAY
+
+    down = set()
+    for move in solve(LEVELS[0]):
+        wanted = {to_session[key] for key in move}
+        for key in wanted - down:
+            game.press(key)
+        for key in down - wanted:
+            game.release(key)
+        down = wanted
+        for _ in range(HOLD_TICKS):
+            game.tick()
+            if game.screen is not Screen.PLAY:
+                break
+        if game.screen is not Screen.PLAY:
+            break
+
+    assert game.screen is Screen.WON
+    assert game.progress.is_done(LEVELS[0].id)

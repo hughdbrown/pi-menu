@@ -165,6 +165,30 @@ def test_the_picker_shows_the_level_number():
     assert len(number_rows(single)) == 5
 
 
+def test_the_picker_refuses_more_levels_than_it_can_show():
+    """Better a loud error than a grid drawn over the level number."""
+    with pytest.raises(ValueError, match="picker holds"):
+        render.draw_picker(
+            index=0,
+            completed=frozenset(),
+            count=render.PICKER_CAPACITY + 1,
+            phase=0,
+        )
+
+
+def test_the_shipped_levels_fit_the_picker():
+    assert len(LEVELS) <= render.PICKER_CAPACITY
+
+
+def test_no_tile_overlaps_the_level_number():
+    frame = render.draw_picker(
+        index=0, completed=frozenset(), count=render.PICKER_CAPACITY, phase=0
+    )
+    tile_rows = {y for _, y in lit(frame) if y < render.NUMBER_TOP}
+
+    assert max(tile_rows) < render.NUMBER_TOP
+
+
 def test_every_shipped_level_has_a_tile():
     frame = render.draw_picker(
         index=0, completed=frozenset(), count=len(LEVELS), phase=0

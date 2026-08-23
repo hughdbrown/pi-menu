@@ -48,6 +48,11 @@ MENU_TOP = (HEIGHT - (2 * font.GLYPH_HEIGHT + 1)) // 2
 TILE_SIZE = 3
 TILE_PITCH = TILE_SIZE + 1
 PICKER_COLUMNS = 4
+#: Three rows of tiles is what fits above the level number. A thirteenth
+#: level would draw over the number rather than beside it, so the grid
+#: refuses rather than quietly making a mess of the only label it has.
+PICKER_ROWS = 3
+PICKER_CAPACITY = PICKER_COLUMNS * PICKER_ROWS
 TILE_DONE = (0, 190, 70)
 TILE_TODO = (30, 45, 90)
 CURSOR = (255, 255, 255)
@@ -134,6 +139,11 @@ def draw_picker(
     index: int, completed: Iterable[int], count: int, phase: int = 0
 ) -> bytes:
     """A tile per level, and the number of the one under the cursor."""
+    if count > PICKER_CAPACITY:
+        raise ValueError(
+            f"the picker holds {PICKER_CAPACITY} levels, not {count} -- "
+            "a fourth row would cover the level number"
+        )
     frame = blank()
     done = set(completed)
 

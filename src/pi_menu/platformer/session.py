@@ -144,16 +144,21 @@ class PlatformSession:
     # -- transitions -----------------------------------------------------
 
     def start(self, index: int) -> None:
-        """Begin a level. Keys held while choosing it do not carry over."""
+        """Begin a level.
+
+        Keys still physically down stay down. Clearing them here would
+        desync this set from the window's, which only reports a press
+        when a key goes *from* up *to* down: after a death with Right
+        held, the player would be stuck until they let go and pressed it
+        again. The window's key state is the truth; this follows it.
+        """
         self.index = index
         self.world = World(self.levels[index])
         self.screen = Screen.PLAY
-        self._held.clear()
 
     def _to_menu(self) -> None:
         self.screen = Screen.MENU
         self.world = None
-        self._held.clear()
 
     # -- the clock -------------------------------------------------------
 
@@ -187,7 +192,6 @@ class PlatformSession:
             # No lives to lose: the level simply starts again.
             self.world.reset()
             self.screen = Screen.PLAY
-            self._held.clear()
         elif self.index + 1 < len(self.levels):
             self.start(self.index + 1)
         else:
