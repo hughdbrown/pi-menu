@@ -43,12 +43,12 @@ def test_every_level_has_coins_to_collect(level):
 
 @pytest.mark.parametrize("level", LEVELS, ids=IDS)
 def test_no_level_starts_the_player_inside_a_wall(level):
-    assert level.solid(*level.spawn) is False
+    assert level.static_solid(*level.spawn) is False
 
 
 @pytest.mark.parametrize("level", LEVELS, ids=IDS)
 def test_no_level_buries_its_goal_in_a_wall(level):
-    assert level.solid(*level.goal) is False
+    assert level.static_solid(*level.goal) is False
 
 
 @pytest.mark.parametrize("level", LEVELS, ids=IDS)
@@ -71,3 +71,68 @@ def test_the_level_can_actually_be_finished(level):
 def test_levels_are_titled_by_their_position():
     assert title(0).startswith("1. ")
     assert title(len(LEVELS) - 1).startswith(f"{len(LEVELS)}. ")
+
+
+# -- the moving parts ----------------------------------------------------
+
+MOVING = [level for level in LEVELS if level.moves]
+
+
+def test_some_levels_move_and_some_do_not():
+    assert MOVING and len(MOVING) < len(LEVELS)
+
+
+@pytest.mark.parametrize("level", MOVING, ids=[level.id for level in MOVING])
+def test_a_moving_level_comes_back_to_where_it_started(level):
+    assert level.period > 1
+    for mover in level.movers:
+        assert mover.occupied(level.period) == mover.occupied(0)
+    for enemy in level.enemies:
+        assert enemy.at(level.period) == enemy.at(0)
+
+
+@pytest.mark.parametrize("level", LEVELS, ids=IDS)
+def test_no_level_has_a_mover_too_short_to_be_worth_riding(level):
+    """A coin drawn on a track splits it into two stubs that barely move."""
+    for mover in level.movers:
+        assert mover.span >= 2, f"{level.id}: a track was cut short at {mover.cells[0]}"
+
+
+@pytest.mark.parametrize("level", LEVELS, ids=IDS)
+def test_no_level_takes_so_long_to_repeat_that_it_cannot_be_searched(level):
+    """The period multiplies the solver's state space.
+
+    Two enemies in pens of different lengths took one level to a period
+    of 2184 and put it out of the solver's reach entirely. Matching the
+    pens brought it to 24.
+    """
+    assert level.period <= 240, f"{level.id}: period {level.period}"
+
+
+@pytest.mark.parametrize("level", LEVELS, ids=IDS)
+def test_nothing_that_moves_starts_inside_a_wall(level):
+    for enemy in level.enemies:
+        assert not level.static_solid(*enemy.at(0))
+    for mover in level.movers:
+        for cell in mover.occupied(0):
+            assert not level.static_solid(*cell)
+
+
+@pytest.mark.parametrize("level", LEVELS, ids=IDS)
+def test_no_level_leans_on_more_crumbling_tiles_than_the_solver_allows(level):
+    assert len(level.crumble) <= 4
+
+
+def test_every_mechanic_appears_in_at_least_one_level():
+    """A mechanic no level uses is a mechanic nobody has ever seen work."""
+    used = {
+        "movers": any(level.movers for level in LEVELS),
+        "enemies": any(level.enemies for level in LEVELS),
+        "bounce": any(level.bounce for level in LEVELS),
+        "ice": any(level.ice for level in LEVELS),
+        "conveyors": any(level.conveyors for level in LEVELS),
+        "crumble": any(level.crumble for level in LEVELS),
+        "portals": any(level.portals for level in LEVELS),
+    }
+
+    assert all(used.values()), f"never used: {[k for k, v in used.items() if not v]}"
