@@ -62,6 +62,11 @@ ICE_FRICTION = 0.015
 CONVEYOR_SPEED = 0.12
 #: A ladder is slower than running and holds you still when you stop.
 LADDER_SPEED = 0.14
+#: How fast a climber slides into line with the rung they are holding.
+#: Without this a ladder is unusable: the player is one cell wide, a hole
+#: in a floor is one cell wide, and a player standing at 8.3 overlaps
+#: columns 8 and 9 and fits through neither.
+LADDER_SNAP = 0.15
 #: An updraught lifts about as fast as a ladder climbs, and needs no
 #: holding on: step into the column and you rise.
 UPDRAFT_SPEED = -0.30
@@ -345,6 +350,14 @@ class World:
         self._drift = CONVEYOR_SPEED * self._conveyor_push()
 
         if self.on_ladder:
+            if not direction:
+                # Line up with the rung, so a one-cell hole can be
+                # climbed through. Steering still overrides it, which is
+                # how you step off sideways.
+                self.vx = max(
+                    -LADDER_SNAP,
+                    min(LADDER_SNAP, self._ladder_column() - self.x),
+                )
             # A ladder holds you where you leave off, and Up climbs it
             # rather than jumping: there is nothing to jump from.
             self.vy = LADDER_SPEED * ((DOWN in held) - (JUMP in held))
@@ -373,6 +386,11 @@ class World:
 
         if self.vy >= 0:
             self._jumping = False
+
+    def _ladder_column(self) -> float:
+        """The rung the climber is nearest to."""
+        holding = self._occupied() & self.level.ladders
+        return float(min(holding, key=lambda cell: abs(cell[0] - self.x))[0])
 
     def _grip(self) -> tuple:
         """How hard the player can push off and how hard they can stop."""

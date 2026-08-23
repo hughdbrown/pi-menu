@@ -88,11 +88,12 @@ MENU_GAP = 4
 
 # -- the picker ----------------------------------------------------------
 
-#: One pixel per level, every other column and row. Chunkier tiles were
-#: readable at twelve levels and ran out of panel long before thirty.
-PICKER_COLUMNS = 8
+#: One pixel per level, sixteen to a row with a blank row between rows.
+#: Eight-wide with gaps held forty; sixty needs the columns packed.
+#: Adjacent pixels stay countable because the row breaks do the grouping.
+PICKER_COLUMNS = 16
 PICKER_ROWS = 5
-PICKER_PITCH = 2
+PICKER_ROW_PITCH = 2
 PICKER_CAPACITY = PICKER_COLUMNS * PICKER_ROWS
 TILE_DONE = (0, 190, 70)
 TILE_TODO = (30, 45, 90)
@@ -253,14 +254,14 @@ def draw_picker(index: int, completed: Iterable, count: int, phase: int = 0) -> 
     if count > PICKER_CAPACITY:
         raise ValueError(
             f"the picker holds {PICKER_CAPACITY} levels, not {count} -- "
-            "another row would cover the level number"
+            "another row would reach the level number"
         )
     frame = blank()
     done = set(completed)
 
     for level_index in range(count):
-        x = (level_index % PICKER_COLUMNS) * PICKER_PITCH
-        y = (level_index // PICKER_COLUMNS) * PICKER_PITCH
+        x = level_index % PICKER_COLUMNS
+        y = (level_index // PICKER_COLUMNS) * PICKER_ROW_PITCH
         colour = TILE_DONE if level_index in done else TILE_TODO
         if level_index == index:
             colour = pulse(CURSOR, colour, phase)

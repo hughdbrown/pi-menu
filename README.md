@@ -9,7 +9,7 @@ panel) attached over USB:
 | **Pi Menu** (`pi-menu`) | Lists the other programs and runs the one you pick in a terminal window. |
 | **Game of Life** (`pi-life`) | Conway's Game of Life on the panel, with start/stop/reset/random and a 16×16 grid you draw on. |
 | **Image Shower** (`pi-imgshow`) | Pick an image file and show it on the panel. PNG, JPEG, BMP, WebP and animated GIF. |
-| **Platform Game** (`pi-platformer`) | A side-scrolling platform game played with the arrow keys. Twenty-seven levels, and a menu drawn on the panel itself. |
+| **Platform Game** (`pi-platformer`) | A side-scrolling platform game with chiptune from the panel's speaker. Sixty levels, four boss fights, and a menu drawn on the panel itself. |
 | **Panel Self-Test** (`pi-menu-doctor`) | Checks every layer between the Pi and the LEDs, then lights the panel up. Run this first when the panel stays dark. |
 | **Flash Panel Firmware** (`pi-menu-flash`) | Copies the frame server onto the Stellar Unicorn's Pico over USB. Needs nothing but pyserial. |
 
@@ -122,7 +122,7 @@ Everything is on the panel — there is nothing to look at in the window. Keep
 it focused, because it is what holds the keyboard.
 
 - **Left** and **Right** run, **Up** jumps. Holding Up jumps higher than
-  tapping it.
+  tapping it. On a ladder, Up and Down climb.
 - **Enter** chooses, **Esc** goes back. From a level, Esc returns to the menu.
 - The menu is two words: **PLAY** carries on from the first level you have not
   finished, **LVLS** opens the picker — a pixel per level, eight to a row,
@@ -131,8 +131,9 @@ it focused, because it is what holds the keyboard.
   until the last coin is taken, then it flashes green.
 - There are no lives. Anything that kills you simply starts the level again.
 
-Twenty-seven levels, each new mechanic introduced on its own before any level
-combines them. Colour is the only label the panel has room for:
+Sixty levels, each new mechanic introduced on its own before any level
+combines them. Some levels are two panels tall — the camera follows in both
+directions. Colour is the only label the panel has room for:
 
 | | Colour | What it is |
 | --- | --- | --- |
@@ -148,6 +149,25 @@ combines them. Colour is the only label the panel has room for:
 | `p` | magenta | a portal. Its pair is somewhere else on the level |
 | `^` | red | a spike |
 | `E` | pink | an enemy, pacing its ledge. Go over it — you cannot land on it |
+| `H` | brown | a ladder. Up and Down climb it; it lines you up as you go |
+| `_` | pale green | a one-way platform. Jump up through it, land on top |
+| `u` | flickering cyan | an updraught. Step in and it carries you up |
+| `x` | violet | a blinking block, solid half the time on a fixed cycle |
+
+**Boss fights.** Levels 15, 30, 45 and 60 each end in an arena under an 8×8
+demon, drawn dim behind the level — you never touch it. It slams fists down
+where you stand and throws fireballs on a pattern that quickens wave by wave;
+both kill. There is nothing to shoot and no health bar: survive everything it
+has and it withdraws, which is what opens the goal. Each demon throws
+differently — the fists are the same everywhere, the fireballs are what you
+learn.
+
+**Music.** The game plays three-channel chiptune — square lead, triangle
+bass, noise percussion — through the Stellar Unicorn's own speaker: a title
+theme, field themes that darken as you go deeper, a boss theme, stings for
+death and victory, and a finale for level sixty. All of it is original,
+written for this game. No panel, no speaker: the music simply does not play,
+and nothing else cares.
 
 The jump is deliberately forgiving. It still fires for a few hundredths of a
 second after you walk off a ledge, and one pressed just before you land is
@@ -238,7 +258,10 @@ only when it finds a sequence of key presses that finishes the level. A map
 can be well formed, readable and still impossible — a coin one cell above the
 jump arc looks exactly like a coin one cell below it — so a new or edited
 level that cannot be won fails the suite rather than the player. It has caught
-five broken levels so far.
+over twenty broken levels so far, including every one of the first drafts of
+the tall levels — a ladder through a one-cell hole is unusable unless the
+game lines the climber up with the rung, which is a physics fix no amount of
+staring at the map would have found.
 
 Two things about that search are worth knowing before adding a level. It
 carries the world's clock in its state, so a level's *period* — how long until

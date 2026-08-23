@@ -358,8 +358,10 @@ def test_dying_puts_the_coins_back(playing):
 
 
 def _win(game):
-    """Put the player on the goal with every coin already taken."""
+    """Put the player on the goal with nothing left standing in the way."""
     game.world.coins = frozenset()
+    game.world.boss_done = True  # boss levels also gate the goal on this
+    game.world.boss_tick = None
     game.world.x, game.world.y = (float(n) for n in game.world.level.goal)
     game.tick()
 

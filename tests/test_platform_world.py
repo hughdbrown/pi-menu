@@ -917,3 +917,36 @@ def test_blinking_blocks_show_in_the_dynamic_key():
     run(world, BLINK_TICKS)
 
     assert world.dynamic_key() != first
+
+
+def test_a_climber_lines_up_with_the_rung():
+    """A one-cell hole is impassable to a player who is not aligned."""
+    world = World(
+        level(
+            "..======H=========..",  # row 12: a floor with a one-cell hole
+            "....................",
+            "..@.....H.......G...",  # row 14
+            "=" * WIDE,
+        )
+    )
+    settle(world)
+    run(world, 30, {RIGHT})  # arrive at the ladder off-centre
+    assert world.on_ladder
+
+    run(world, 20, {JUMP})
+
+    assert world.x == pytest.approx(8.0, abs=0.2), "never lined up with the rung"
+    assert world.y < 12.0, "could not climb through the hole"
+
+
+def test_steering_still_takes_you_off_a_ladder():
+    """Off the side, where there is open air -- not through a floor."""
+    world = World(_ladder_level())
+    settle(world)
+    run(world, 12, {RIGHT})
+    run(world, 20, {JUMP})
+    assert world.on_ladder
+
+    run(world, 20, {RIGHT})
+
+    assert world.on_ladder is False

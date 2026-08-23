@@ -59,13 +59,35 @@ def test_nothing_important_sits_on_a_spike(level):
     assert level.spawn not in level.spikes
 
 
-@pytest.mark.parametrize("level", LEVELS, ids=IDS)
-def test_the_level_can_actually_be_finished(level):
+def _solve_by_index(index: int) -> str | None:
+    """Solve one level in a worker process. None means it was won."""
+    level = LEVELS[index]
     try:
         moves = solve(level)
-    except Unwinnable as exc:  # pragma: no cover - only when a level is broken
-        pytest.fail(str(exc))
-    assert moves, "the level was won without pressing anything"
+    except Unwinnable as exc:
+        return str(exc)
+    return None if moves else f"{level.id}: won without pressing anything"
+
+
+def test_every_level_can_actually_be_finished():
+    """Solve all of them, spread across the machine's cores.
+
+    One test rather than one per level because sixty sequential solves
+    take minutes, and this suite runs before every commit. The failure
+    message still names each level that cannot be won.
+    """
+    import concurrent.futures
+    import os
+
+    workers = min(len(LEVELS), os.cpu_count() or 2)
+    with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as pool:
+        failures = [
+            result
+            for result in pool.map(_solve_by_index, range(len(LEVELS)))
+            if result is not None
+        ]
+
+    assert not failures, "unwinnable levels:\n" + "\n".join(failures)
 
 
 def test_levels_are_titled_by_their_position():

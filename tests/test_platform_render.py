@@ -353,6 +353,13 @@ def test_the_grid_never_reaches_the_number():
     assert max(tiles) < render.NUMBER_TOP - 1
 
 
+def test_sixty_levels_fit():
+    frame = render.draw_picker(index=59, completed=frozenset(), count=60, phase=0)
+    tiles = {(x, y) for x, y in lit(frame) if y < render.NUMBER_TOP}
+
+    assert len(tiles) == 60
+
+
 def test_a_two_digit_level_number_is_shown():
     frame = render.draw_picker(index=26, completed=frozenset(), count=27, phase=0)
     digits = {x for x, y in lit(frame) if y >= render.NUMBER_TOP}

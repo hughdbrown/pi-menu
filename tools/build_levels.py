@@ -49,8 +49,18 @@ def art(width, height=PANEL, solid=(), spikes=(), coins=(), spawn=None, goal=Non
             for y in range(y0, y1 + 1):
                 rows[y][column] = glyph
 
+    drawn = {}
+
     def dots(cells, glyph):
         for x, y in cells:
+            # A coin drawn on a track splits the track into two stubs that
+            # barely move, and the finished ASCII gives no hint of it. It
+            # has happened twice, so it is an error rather than a surprise.
+            if rows[y][x] in "-|Hu":
+                raise ValueError(
+                    f"{glyph!r} at ({x}, {y}) is drawn on top of "
+                    f"{rows[y][x]!r}, which would cut it in two"
+                )
             rows[y][x] = glyph
 
     paint(solid, "=")
