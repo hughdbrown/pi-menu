@@ -243,10 +243,14 @@ refresh_menu() {
     if command -v update-desktop-database >/dev/null 2>&1; then
         update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1 || true
     fi
-    # LXDE rebuilds its menu when the applications directory changes; give
-    # it a nudge in case the panel is caching.
-    if command -v lxpanelctl >/dev/null 2>&1; then
-        lxpanelctl restart >/dev/null 2>&1 || true
+    # Older LXDE desktops cache the menu; a nudge helps there. On current
+    # Raspberry Pi OS the session is Wayland, lxpanel is not running, and
+    # lxpanelctl can block forever waiting for a panel that will never
+    # answer -- which hung this whole installer, before the step that
+    # offers to flash the Pico. Never let it wait more than a moment, and
+    # never let it near a session with no X display.
+    if command -v lxpanelctl >/dev/null 2>&1 && [ -n "${DISPLAY:-}" ]; then
+        timeout 5 lxpanelctl restart >/dev/null 2>&1 || true
     fi
 }
 
