@@ -125,3 +125,28 @@ def test_list_offers_the_platform_game(capsys):
     output = capsys.readouterr().out
     assert "Platform Game" in output
     assert "pi_menu.platformer.app" in output
+
+
+def test_the_launcher_writes_a_log_even_for_list(tmp_path, monkeypatch, capsys):
+    """The GUI case has no terminal, so the log is the only witness."""
+    monkeypatch.setenv("PI_MENU_LOG_DIR", str(tmp_path))
+    launcher = importlib.import_module("pi_menu.launcher")
+
+    assert launcher.main(["--list"]) == 0
+    capsys.readouterr()
+
+    logged = (tmp_path / "pi-menu.log").read_text()
+    assert "pi-menu" in logged and "starting" in logged
+
+
+def test_a_broken_app_file_is_named_in_the_log(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("PI_MENU_LOG_DIR", str(tmp_path))
+    broken = tmp_path / "apps.json"
+    broken.write_text("{oops", encoding="utf-8")
+    monkeypatch.setenv("PI_MENU_APPS", str(broken))
+    launcher = importlib.import_module("pi_menu.launcher")
+
+    assert launcher.main(["--list"]) == 1
+    capsys.readouterr()
+
+    assert "not valid JSON" in (tmp_path / "pi-menu.log").read_text()

@@ -8,17 +8,20 @@ registry, shows what is on offer, and hands the chosen command to
 from __future__ import annotations
 
 import argparse
+import logging
 import subprocess
 import sys
 import tkinter as tk
 from tkinter import ttk
 
-from . import __version__
+from . import __version__, logs
 from .config import AppEntry, ConfigError, apps_path, load_apps
 from .palette import BG, FG, GRID_LINE, MUTED, PANEL_BG
 from .terminal import NoTerminalFound, find_terminal, launch
 
 POLL_MS = 1000
+
+log = logging.getLogger(__name__)
 
 
 class MenuApp:
@@ -116,11 +119,21 @@ class MenuApp:
         try:
             self.apps = [app for app in load_apps() if app.enabled]
         except ConfigError as exc:
+            # The window shows this only in the small status line, which
+            # is easy to miss; the log is the durable copy.
+            log.error("could not load the app list: %s", exc)
             self.apps = []
             self._description.set("")
             self._status.set(str(exc))
             self.run_button.state(["disabled"])
             return
+
+        log.info(
+            "loaded %d app(s) from %s: %s",
+            len(self.apps),
+            apps_path(),
+            ", ".join(app.id for app in self.apps) or "(none)",
+        )
 
         for app in self.apps:
             self.listbox.insert(tk.END, f"  {app.name}")
@@ -161,21 +174,26 @@ class MenuApp:
             return
 
         command = app.resolved_command()
+        log.info("launching %s: %s", app.id, " ".join(command))
         try:
             process = launch(
                 command, title=app.name, hold=app.hold, in_terminal=app.terminal
             )
         except NoTerminalFound as exc:
+            log.warning("no terminal for %s (%s); running it bare", app.id, exc)
             self._status.set(f"{exc} — running without a terminal instead.")
             try:
                 process = launch(command, title=app.name, in_terminal=False)
             except OSError as fallback_exc:
+                log.error("could not start %s: %s", app.id, fallback_exc)
                 self._status.set(f"Could not start {app.name}: {fallback_exc}")
                 return
         except OSError as exc:
+            log.error("could not start %s: %s", app.id, exc)
             self._status.set(f"Could not start {app.name}: {exc}")
             return
 
+        log.info("started %s as pid %d", app.id, process.pid)
         self._running.append((app.name, process))
         self._status.set(f"Started {app.name} (pid {process.pid}).")
 
@@ -187,6 +205,7 @@ class MenuApp:
             if code is None:
                 still_running.append((name, process))
             elif code != 0:
+                log.warning("%s exited with status %d", name, code)
                 self._status.set(
                     f"{name} exited with status {code} — see its terminal window."
                 )
@@ -209,10 +228,22 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    log_path = logs.setup("pi-menu")
+    logs.log_unhandled(log)
+    log.info(
+        "pi-menu %s starting (python %s, argv %s)",
+        __version__,
+        sys.version.split()[0],
+        argv if argv is not None else sys.argv[1:],
+    )
+    if log_path is None:
+        log.warning("no log file could be opened; logging to nowhere")
+
     if args.list:
         try:
             apps = load_apps()
         except ConfigError as exc:
+            log.error("could not load the app list: %s", exc)
             print(exc, file=sys.stderr)
             return 1
         print(f"# {apps_path()}")
@@ -222,9 +253,16 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{'':12} {' '.join(app.resolved_command())}")
         return 0
 
-    root = tk.Tk()
+    try:
+        root = tk.Tk()
+    except tk.TclError as exc:
+        # No display: the classic over-SSH or misconfigured-session case.
+        log.error("could not open a window: %s", exc)
+        print(f"could not open a window: {exc}", file=sys.stderr)
+        return 1
     MenuApp(root)
     root.mainloop()
+    log.info("pi-menu closed normally")
     return 0
 
 

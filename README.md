@@ -279,6 +279,17 @@ distance, which is what lets it find a portal that leads away from the goal.
 
 ## Troubleshooting
 
+**Something launched from the desktop menu misbehaves.** Programs started
+from the menu have no terminal, so their errors are invisible — but Pi Menu
+writes a log:
+
+```bash
+tail -50 ~/.local/state/pi-menu/pi-menu.log
+```
+
+An empty app list, for example, almost always means `~/.config/pi-menu/apps.json`
+failed to load, and the log names the exact parse error and line.
+
 **The panel stays dark, or the app runs in the terminal instead.** Run
 `pi-menu-doctor` (or Panel Self-Test in the menu). It walks the whole path one
 layer at a time and names the layer that broke. The usual causes are a Pico
