@@ -18,6 +18,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from .. import music as chiptune
+from ..capture import save_frame
 from ..display import add_display_args, open_display
 from ..display.pump import FramePump
 from ..palette import BG, FG, MUTED, WARN
@@ -29,8 +30,12 @@ TICK_MS = round(1000 / TICK_HZ)
 
 HELP = (
     "Arrow keys move and jump  ·  Enter chooses  ·  Esc goes back\n"
-    "Collect every coin to open the goal, then reach it."
+    "Collect every coin to open the goal, then reach it.\n"
+    "C saves what the panel is showing as a PNG."
 )
+
+#: How long a capture's file name stays in the status line, in ticks.
+NOTE_TICKS = 60
 
 
 class PlatformApp:
@@ -46,6 +51,8 @@ class PlatformApp:
 
         self._after_id: str | None = None
         self._status = tk.StringVar()
+        self._note: str | None = None
+        self._note_ticks = 0
         self.brightness = tk.IntVar(value=int(pump.display.brightness * 100))
 
         self._build_ui()
@@ -133,10 +140,27 @@ class PlatformApp:
     # -- input -----------------------------------------------------------
 
     def _on_press(self, event) -> None:
+        if event.keysym in ("c", "C"):
+            self._capture()
+            return
         key = KEYSYMS.get(event.keysym)
         if key is not None and self.keys.press(key):
             self.session.press(key)
             self._refresh()
+
+    def _capture(self) -> None:
+        """Save the frame the panel is showing right now."""
+        try:
+            path = save_frame(self.session.framebuffer(), prefix="platformer")
+        except Exception as exc:  # noqa: BLE001 - a failed shot must not crash play
+            self._show_note(f"capture failed: {exc}")
+            return
+        self._show_note(f"saved {path}")
+
+    def _show_note(self, text: str) -> None:
+        self._note = text
+        self._note_ticks = NOTE_TICKS
+        self._refresh()
 
     def _on_release(self, event) -> None:
         key = KEYSYMS.get(event.keysym)
@@ -150,6 +174,8 @@ class PlatformApp:
 
     def _tick(self) -> None:
         self._after_id = None
+        if self._note_ticks > 0:
+            self._note_ticks -= 1
         for key in self.keys.settle():
             self.session.release(key)
         self.session.tick()
@@ -167,6 +193,9 @@ class PlatformApp:
         error = self.pump.error
         if error is not None:
             self._status.set(f"panel stopped responding: {error}")
+            return
+        if self._note_ticks > 0:
+            self._status.set(self._note)
             return
         self._status.set(self.session.status_text())
 

@@ -16,6 +16,7 @@ from pi_menu.platformer import render
 from pi_menu.platformer.levels import LEVELS
 from pi_menu.platformer.progress import Progress
 from pi_menu.platformer.session import (
+    AUTO_ENTRY,
     BACK,
     DOWN,
     FLASH_TICKS,
@@ -116,9 +117,9 @@ def test_the_menu_selection_does_not_wrap_past_the_ends(session):
     game.press(UP)
     assert game.menu_entry == PLAY_ENTRY
 
-    game.press(DOWN)
-    game.press(DOWN)
-    assert game.menu_entry == PICKER_ENTRY
+    for _ in range(4):
+        game.press(DOWN)
+    assert game.menu_entry == AUTO_ENTRY
 
 
 def test_choosing_play_starts_the_level(session):
@@ -622,3 +623,95 @@ def playing_musical(tmp_path):
     )
     game.press(SELECT)
     return game
+
+
+# -- auto-play -----------------------------------------------------------
+
+
+@pytest.fixture
+def auto(session):
+    game, recorder = session
+    game.press(DOWN)
+    game.press(DOWN)
+    game.press(SELECT)
+    return game, recorder
+
+
+def test_the_third_menu_entry_starts_auto_play(auto):
+    game, _ = auto
+
+    assert game.screen is Screen.PLAY
+    assert game.auto is True
+    assert game.world.level is LEVELS[0]
+
+
+def test_auto_play_plays_without_any_keys_held(auto):
+    game, _ = auto
+    start = game.world.x
+
+    for _ in range(30):
+        game.tick()
+
+    assert game.world.x != start, "the pilot never moved the player"
+
+
+def test_auto_play_wins_the_level_and_moves_to_the_next(auto):
+    game, _ = auto
+    from pi_menu.platformer.routes import ROUTES, TICKS_PER_MOVE
+
+    budget = len(ROUTES[LEVELS[0].id]) * TICKS_PER_MOVE + FLASH_TICKS + 20
+    for _ in range(budget):
+        game.tick()
+        if game.world is not None and game.world.level is LEVELS[1]:
+            break
+
+    assert game.world.level is LEVELS[1]
+    assert game.auto is True, "auto-play stopped at the level change"
+
+
+def test_right_skips_to_the_next_level_in_auto_play(auto):
+    game, _ = auto
+
+    game.press(RIGHT)
+
+    assert game.world.level is LEVELS[1]
+    assert game.auto is True
+
+
+def test_left_from_the_first_level_wraps_to_the_last(auto):
+    game, _ = auto
+
+    game.press(LEFT)
+
+    assert game.world.level is LEVELS[-1]
+
+
+def test_escape_leaves_auto_play(auto):
+    game, _ = auto
+
+    game.press(BACK)
+
+    assert game.screen is Screen.MENU
+    assert game.auto is False
+
+
+def test_ordinary_play_is_not_auto(session):
+    game, _ = session
+    game.press(SELECT)
+
+    assert game.auto is False
+
+
+def test_the_status_says_it_is_auto_playing(auto):
+    game, _ = auto
+
+    assert "auto-play" in game.status_text()
+
+
+def test_arrow_keys_do_not_skip_levels_in_ordinary_play(session):
+    game, _ = session
+    game.press(SELECT)
+
+    game.press(RIGHT)
+
+    assert game.world.level is LEVELS[0]

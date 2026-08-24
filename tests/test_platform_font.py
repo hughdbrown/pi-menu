@@ -30,7 +30,7 @@ def test_every_glyph_uses_only_ink_and_space():
         assert set("".join(rows)) <= {font.INK, font.SPACE}, character
 
 
-@pytest.mark.parametrize("word", ["PLAY", "LVLS"])
+@pytest.mark.parametrize("word", ["PLAY", "LVLS", "AUTO"])
 def test_the_menu_words_can_be_written(word):
     assert all(character in font.GLYPHS for character in word)
 
@@ -39,10 +39,9 @@ def test_every_digit_can_be_written():
     assert all(str(digit) in font.GLYPHS for digit in range(10))
 
 
-def test_the_menu_words_leave_a_margin_on_the_panel():
-    """The old five-row font filled all but one column. This does not."""
-    assert font.text_width("PLAY") <= WIDTH - 2
-    assert font.text_width("LVLS") <= WIDTH - 2
+def test_the_menu_words_fit_beside_the_selection_marker():
+    for word in ("PLAY", "LVLS", "AUTO"):
+        assert font.text_width(word) <= WIDTH - 1, word
 
 
 def test_width_counts_the_gaps_between_characters():
@@ -78,3 +77,9 @@ def test_the_last_character_ends_where_the_width_says_it_does():
 def test_an_unknown_character_is_refused():
     with pytest.raises(KeyError):
         list(font.pixels("~", 0, 0))
+
+
+def test_the_third_menu_word_can_be_written():
+    """AUTO has no narrow letters, so it uses every column but the marker's."""
+    assert all(character in font.GLYPHS for character in "AUTO")
+    assert font.text_width("AUTO") <= WIDTH - 1

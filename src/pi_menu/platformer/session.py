@@ -20,7 +20,9 @@ from .. import music as chiptune
 from . import render, world as physics
 from .level import Level
 from .levels import LEVELS, title
+from .autopilot import Autopilot
 from .progress import Progress
+from .routes import ROUTES
 from .world import Event, World
 
 #: Called with a complete framebuffer whenever the panel should change.
@@ -39,7 +41,8 @@ GAME_KEYS = {LEFT: physics.LEFT, RIGHT: physics.RIGHT, UP: physics.JUMP}
 
 PLAY_ENTRY = 0
 PICKER_ENTRY = 1
-MENU_ENTRIES = 2
+AUTO_ENTRY = 2
+MENU_ENTRIES = 3
 
 #: How long a death or a win holds the screen before moving on.
 FLASH_TICKS = 8
@@ -75,6 +78,9 @@ class PlatformSession:
         self.index = self._first_unfinished()
         self.world: World | None = None
         self.phase = 0
+        #: In auto-play the recorded route drives the level, not the keys.
+        self.auto = False
+        self._pilot: Autopilot | None = None
 
         self._sink = sink
         self._held: set = set()
@@ -113,8 +119,14 @@ class PlatformSession:
             self._menu_key(key)
         elif self.screen is Screen.PICKER:
             self._picker_key(key)
-        elif self.screen is Screen.PLAY and key == BACK:
-            self._to_menu()
+        elif self.screen is Screen.PLAY:
+            if key == BACK:
+                self._to_menu()
+            elif self.auto and key in (LEFT, RIGHT):
+                # Skipping straight to the level you want to film beats
+                # waiting for the tour to arrive there.
+                step = 1 if key == RIGHT else -1
+                self.start((self.index + step) % len(self.levels), auto=True)
 
         self._update_music()
         self.push()
@@ -130,8 +142,12 @@ class PlatformSession:
         elif key == SELECT:
             if self.menu_entry == PLAY_ENTRY:
                 self.start(self.index)
-            else:
+            elif self.menu_entry == PICKER_ENTRY:
                 self.screen = Screen.PICKER
+            else:
+                # Auto-play tours the levels from the first: the point is
+                # watching (and filming), not carrying progress forward.
+                self.start(0, auto=True)
 
     def _picker_key(self, key: str) -> None:
         last = len(self.levels) - 1
@@ -150,7 +166,7 @@ class PlatformSession:
 
     # -- transitions -----------------------------------------------------
 
-    def start(self, index: int) -> None:
+    def start(self, index: int, auto: bool = False) -> None:
         """Begin a level.
 
         Keys still physically down stay down. Clearing them here would
@@ -162,10 +178,14 @@ class PlatformSession:
         self.index = index
         self.world = World(self.levels[index])
         self.screen = Screen.PLAY
+        self.auto = auto
+        self._pilot = Autopilot(ROUTES[self.levels[index].id]) if auto else None
 
     def _to_menu(self) -> None:
         self.screen = Screen.MENU
         self.world = None
+        self.auto = False
+        self._pilot = None
 
     # -- the clock -------------------------------------------------------
 
@@ -209,7 +229,12 @@ class PlatformSession:
         self.music.silence()
 
     def _play_tick(self) -> None:
-        event = self.world.step(self._held)
+        if self.auto:
+            held = self._pilot.held()
+            self._pilot.advance()
+        else:
+            held = self._held
+        event = self.world.step(held)
         if event is Event.DIED:
             self.screen = Screen.DEAD
             self._countdown = FLASH_TICKS
@@ -224,11 +249,15 @@ class PlatformSession:
             return
 
         if self.screen is Screen.DEAD:
-            # No lives to lose: the level simply starts again.
+            # No lives to lose: the level simply starts again. In auto
+            # this should be unreachable -- the routes are replayed
+            # solver output -- but a fresh pilot beats a stuck one.
             self.world.reset()
             self.screen = Screen.PLAY
+            if self.auto:
+                self._pilot = Autopilot(ROUTES[self.world.level.id])
         elif self.index + 1 < len(self.levels):
-            self.start(self.index + 1)
+            self.start(self.index + 1, auto=self.auto)
         else:
             self._to_menu()
 
@@ -272,7 +301,8 @@ class PlatformSession:
             return f"{title(self.index)}  ·  ouch — starting again"
         if self.screen is Screen.WON:
             return f"{title(self.index)}  ·  finished!"
+        auto = "auto-play  ·  " if self.auto else ""
         return (
-            f"{title(self.index)}  ·  {len(self.world.coins)} coins left"
+            f"{auto}{title(self.index)}  ·  {len(self.world.coins)} coins left"
             f"{'' if self.world.coins else '  ·  the goal is open'}"
         )

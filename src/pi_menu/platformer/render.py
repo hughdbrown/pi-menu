@@ -78,13 +78,14 @@ CONVEYOR_TICKS = 2
 MENU_SELECTED = (0, 255, 120)
 MENU_IDLE = (28, 62, 44)
 MENU_MARKER = (255, 255, 255)
-MENU_WORDS = ("PLAY", "LVLS")
-#: The words start clear of the marker column.
-MENU_LEFT = 2
-MENU_TOP = 2
-#: Blank rows between the two words. Wide enough that they read as two
-#: choices rather than one block of pixels.
-MENU_GAP = 4
+MENU_WORDS = ("PLAY", "LVLS", "AUTO")
+#: The words start clear of the marker column. AUTO has no narrow
+#: letters and needs every remaining column.
+MENU_LEFT = 1
+MENU_TOP = 1
+#: One blank row between words: three four-row words and two gaps is
+#: fourteen rows, which is all the sixteen the panel has can spare.
+MENU_GAP = 1
 
 # -- the picker ----------------------------------------------------------
 

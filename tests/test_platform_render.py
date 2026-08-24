@@ -124,7 +124,7 @@ def test_the_menu_words_do_not_overlap():
     frame = render.draw_menu(selected=0, phase=0)
     rows = {y for _, y in lit(frame)}
 
-    assert len(rows) == 2 * font.GLYPH_HEIGHT, "two words, with a gap between"
+    assert len(rows) == 3 * font.GLYPH_HEIGHT, "three words, with gaps between"
 
 
 # -- the picker ----------------------------------------------------------
@@ -317,17 +317,19 @@ def test_the_menu_marks_the_selected_entry_in_the_spare_column():
 
 
 def test_the_marker_moves_with_the_selection():
-    first = {y for x, y in lit(render.draw_menu(0, 0)) if x == 0}
-    second = {y for x, y in lit(render.draw_menu(1, 0)) if x == 0}
+    marks = [
+        {y for x, y in lit(render.draw_menu(entry, 0)) if x == 0}
+        for entry in range(3)
+    ]
 
-    assert first and second and first != second
+    assert all(marks)
+    assert len({frozenset(mark) for mark in marks}) == 3
 
 
-def test_the_menu_leaves_a_margin_rather_than_filling_the_panel():
-    frame = render.draw_menu(selected=0, phase=0)
-    rows = {y for _, y in lit(frame)}
+def test_the_menu_stays_on_the_panel():
+    frame = render.draw_menu(selected=2, phase=0)
 
-    assert min(rows) > 0 and max(rows) < HEIGHT - 1
+    assert all(0 <= x < WIDTH and 0 <= y < HEIGHT for x, y in lit(frame))
 
 
 # -- the dot-grid picker -------------------------------------------------
