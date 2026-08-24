@@ -285,6 +285,15 @@ layer at a time and names the layer that broke. The usual causes are a Pico
 that is not running `main.py`, and a `dialout` group change that has not taken
 effect yet — `id -nG | grep dialout`, and log out and back in if it is missing.
 
+**Pictures work but there is no sound.** Run `pi-menu-flash --beep`. It
+reports whether the current firmware is really on the board — a `git pull`
+updates the Pi but never the Pico, so re-flash if it says the fix is
+missing — then sounds a one-second beep through Pimoroni's own API with our
+firmware standing aside, printing the real error if the synth raises one. A
+beep you can hear means the speaker is fine and the fault is in our
+firmware; silence from the beep means the problem is below our code. The
+panel's +/- buttons do nothing under this firmware: nothing reads them.
+
 **It worked once and then stopped until I power-cycled the Pico.** That is
 firmware from before the `kbd_intr` fix: the clear sent when an app exited was
 byte `0x03`, which killed the frame server. Run `pi-menu-flash`.

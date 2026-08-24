@@ -302,7 +302,11 @@ main() {
   Edit $CONFIG_DIR/apps.json to add your own programs to the menu.
 
   If the panel stays dark, run pi-menu-doctor. It names the layer that
-  broke instead of leaving you guessing.
+  broke instead of leaving you guessing. If it shows pictures but stays
+  silent, run pi-menu-flash --beep: it reports whether the current
+  firmware is really on the board, then sounds the speaker through
+  Pimoroni's own API with our code standing aside -- and prints the
+  real error if there is one.
 EOF
 }
 

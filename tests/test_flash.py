@@ -279,3 +279,96 @@ def test_the_firmware_ships_inside_the_package():
     package_root = Path(pi_menu.__file__).resolve().parent
     assert FRAME_SERVER.is_file()
     assert package_root in FRAME_SERVER.resolve().parents
+
+
+# -- the beep diagnostic -------------------------------------------------
+
+
+def _stub_stellar(monkeypatch):
+    """A stellar module whose synth records what the beep does to it."""
+    import sys
+    import types
+
+    calls = []
+
+    class Voice:
+        def configure(self, **kw):
+            if not 0.0 <= float(kw.get("volume", 0)) <= 1.0:
+                raise ValueError("volume out of range. Expected 0.0 to 1.0")
+            calls.append(("configure", kw))
+
+        def trigger_attack(self):
+            calls.append(("attack",))
+
+        def trigger_release(self):
+            calls.append(("release",))
+
+    class StellarUnicorn:
+        def set_volume(self, value):
+            calls.append(("set_volume", value))
+
+        def synth_channel(self, index):
+            return Voice()
+
+        def play_synth(self):
+            calls.append(("play",))
+
+        def stop_playing(self):
+            calls.append(("stop",))
+
+    module = types.ModuleType("stellar")
+    module.StellarUnicorn = StellarUnicorn
+    monkeypatch.setitem(sys.modules, "stellar", module)
+    return calls
+
+
+def test_beep_reports_whether_the_fix_is_on_the_board(board, monkeypatch, capsys):
+    _stub_stellar(monkeypatch)
+    repl, path = board
+    repl.files["main.py"] = b"# old firmware, no mask table here"
+
+    flash.beep(port=path, log=print)
+
+    output = capsys.readouterr().out
+    assert "MAIN_FIXED=0" in output
+    assert "NOT on the board" in output
+
+
+def test_beep_drives_the_vendor_synth_directly(board, monkeypatch, capsys):
+    calls = _stub_stellar(monkeypatch)
+    repl, path = board
+    repl.files["main.py"] = b"WAVEFORM_MASKS = (64, 16, 32, 8, 128)"
+
+    flash.beep(port=path, log=print)
+
+    output = capsys.readouterr().out
+    assert "MAIN_FIXED=1" in output
+    assert "BEEP_OK" in output
+    assert ("attack",) in calls
+    assert ("release",) in calls
+    assert ("set_volume", 1.0) in calls
+
+
+def test_beep_surfaces_the_error_our_firmware_would_swallow(board, monkeypatch, capsys):
+    import sys
+    import types
+
+    module = types.ModuleType("stellar")
+
+    class Broken:
+        def set_volume(self, value):
+            raise RuntimeError("no synth in this build")
+
+        def synth_channel(self, index):  # pragma: no cover - unreached
+            raise RuntimeError("no synth in this build")
+
+    module.StellarUnicorn = Broken
+    monkeypatch.setitem(sys.modules, "stellar", module)
+    repl, path = board
+    repl.files["main.py"] = b"WAVEFORM_MASKS = whatever"
+
+    flash.beep(port=path, log=print)
+
+    output = capsys.readouterr().out
+    assert "BEEP_ERROR" in output
+    assert "no synth in this build" in output

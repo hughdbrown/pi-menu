@@ -223,6 +223,97 @@ def flash(
     return target
 
 
+#: Asks the board what is in main.py, without trusting anything our own
+#: firmware reports about itself.
+INSPECT_CODE = """
+report = []
+try:
+    handle = open("main.py", "rb")
+    data = handle.read()
+    handle.close()
+    report.append("MAIN_BYTES=%d" % len(data))
+    report.append("MAIN_FIXED=%d" % (b"WAVEFORM_MASKS" in data))
+except Exception as exc:
+    report.append("MAIN_ERROR=%r" % exc)
+print(";".join(report))
+"""
+
+#: Drives the vendor synth directly -- our frame server is not involved,
+#: so a silent panel here is the speaker's or Pimoroni's problem, and a
+#: raised error comes back as a real traceback instead of being eaten by
+#: the frame server's keep-the-pictures-alive guard.
+BEEP_CODE = """
+import sys
+import time
+try:
+    from stellar import StellarUnicorn
+    main_module = sys.modules.get("__main__")
+    su = getattr(main_module, "unicorn", None)
+    via = "reused the frame server's unicorn"
+    if su is None:
+        su = StellarUnicorn()
+        via = "made a fresh StellarUnicorn"
+    su.set_volume(1.0)
+    voice = su.synth_channel(0)
+    voice.configure(waveforms=8, frequency=880, volume=1.0,
+                    attack=0.01, decay=0.05, sustain=0.8, release=0.05)
+    voice.trigger_attack()
+    su.play_synth()
+    time.sleep(1.0)
+    voice.trigger_release()
+    time.sleep(0.2)
+    su.stop_playing()
+    print("BEEP_OK via %s" % via)
+except Exception as exc:
+    print("BEEP_ERROR=%r" % exc)
+"""
+
+
+def beep(port: str | None = None, log=print) -> str:
+    """Sound the speaker with the vendor API alone, and say what happened.
+
+    The one question ears cannot answer is *why* a panel is silent. This
+    splits the possibilities: it reports whether the fixed firmware is
+    actually in the board's main.py, then plays a one-second 880 Hz sine
+    through Pimoroni's own API with the frame server standing aside. A
+    beep heard means the speaker and synth work and any remaining silence
+    is our firmware's fault; an error here comes back as a traceback,
+    which the frame server's failure guard would have swallowed.
+    """
+    import serial
+
+    target = port or find_port()
+    if not target:
+        raise FlashError("no Pico found. Check the cable, and that the panel is powered.")
+
+    log(f"Panel on {target}")
+    with serial.Serial(target, proto.BAUD, timeout=2.0, write_timeout=5.0) as link:
+        time.sleep(0.3)
+        if stand_down_frame_server(link):
+            log("  asked the running frame server to step aside")
+
+        repl = RawRepl(link)
+        repl.enter()
+        try:
+            inspection = repl.run(INSPECT_CODE).decode("utf-8", "replace").strip()
+            log(f"  on-board main.py: {inspection}")
+            if "MAIN_FIXED=0" in inspection:
+                log("  >> the sound fix is NOT on the board: run pi-menu-flash")
+
+            log("  playing a one-second beep through the vendor API alone...")
+            result = repl.run(BEEP_CODE).decode("utf-8", "replace").strip()
+            log(f"  {result}")
+            if result.startswith("BEEP_OK"):
+                log("  If you HEARD that beep, the speaker and synth are fine.")
+                log("  If you did not, the problem is below our code entirely.")
+        finally:
+            repl.exit()
+        log("  restarting the panel")
+        repl.soft_reset()
+        time.sleep(1.5)
+    return target
+
+
 def confirm_running(port: str, log=print) -> bool:
     """Ping the freshly flashed board and report what answered."""
     from .display.serial_link import SerialDisplay, StellarUnicornNotFound
@@ -254,12 +345,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--no-verify", action="store_true", help="skip reading the copy back"
     )
+    parser.add_argument(
+        "--beep",
+        action="store_true",
+        help="do not flash anything: check what is on the board and sound "
+        "a test beep through the vendor API directly",
+    )
     args = parser.parse_args(argv)
 
     def log(message="", end="\n"):
         print(message, end=end, flush=True)
 
     try:
+        if args.beep:
+            beep(port=args.port, log=log)
+            return 0
         port = flash(
             port=args.port,
             source=args.source,
