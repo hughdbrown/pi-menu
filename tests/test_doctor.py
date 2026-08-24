@@ -120,3 +120,21 @@ def test_results_render_with_their_detail_indented():
     assert "[ FAIL ] it broke" in rendered
     assert "           line one" in rendered
     assert "           line two" in rendered
+
+
+def test_the_sound_check_plays_notes_through_the_real_firmware(pico):
+    firmware, path = pico
+    results = doctor.check_sound(path)
+
+    assert [r.level for r in results] == [doctor.OK]
+    assert "HEARD" in results[0].detail
+    assert firmware._audio is True, "the arpeggio tripped the firmware's guard"
+    assert any(c.attacks for c in firmware.unicorn.channels.values())
+
+
+def test_a_full_run_includes_the_sound_check(pico):
+    _, path = pico
+
+    results = doctor.run_checks(port=path)
+
+    assert any("arpeggio" in r.title for r in results)

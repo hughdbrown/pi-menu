@@ -276,6 +276,45 @@ def check_frames(path: str) -> list[Result]:
     return results
 
 
+def check_sound(path: str) -> list[Result]:
+    """Play a short arpeggio, and say to listen for it.
+
+    The firmware refuses to let a sound failure darken the panel, so a
+    broken synth is silent in every sense -- the display carries on and
+    nothing reports an error. Ears are the only instrument that can
+    close this loop, which is why the result says what you should have
+    heard rather than claiming success.
+    """
+    from .display import protocol as proto
+    from .display.serial_link import SerialDisplay
+
+    try:
+        display = SerialDisplay(port=path, brightness=0.5)
+    except Exception as exc:  # noqa: BLE001
+        return [Result(FAIL, "could not open the panel for the sound test", str(exc))]
+
+    try:
+        for hertz in (523, 659, 784, 1047):  # C5 E5 G5 C6
+            display.play_tone(0, proto.WAVE_SQUARE, hertz, 180)
+            time.sleep(0.18)
+        display.hush()
+    except Exception as exc:  # noqa: BLE001
+        return [Result(FAIL, "the panel stopped answering during the sound test", str(exc))]
+    finally:
+        display.close()
+
+    return [
+        Result(
+            OK,
+            "sent a four-note rising arpeggio to the speaker",
+            "You should have HEARD it. Silence with this check green means\n"
+            "the panel took the commands but its synth is not sounding:\n"
+            "re-run pi-menu-flash (the fix for this shipped 2026-08-23),\n"
+            "and check nothing is covering the speaker.",
+        )
+    ]
+
+
 def check_terminal() -> list[Result]:
     from .terminal import find_terminal
 
@@ -328,6 +367,12 @@ def run_checks(port: str | None = None, send_frames: bool = True) -> list[Result
 
     if version is not None and send_frames:
         results += check_frames(target)
+        if version >= 3:
+            results += check_sound(target)
+        else:
+            results.append(
+                Result(WARN, "sound test skipped: firmware predates the synth (v3)")
+            )
     elif version is not None:
         results.append(Result(WARN, "frame test skipped (--no-frames)"))
 

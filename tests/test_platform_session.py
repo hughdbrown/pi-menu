@@ -645,6 +645,27 @@ def test_the_third_menu_entry_starts_auto_play(auto):
     assert game.world.level is LEVELS[0]
 
 
+def test_a_level_chosen_in_the_picker_carries_into_auto_play(tmp_path):
+    """LVLS, move the cursor, Esc, AUTO: auto-play starts on that level.
+
+    It used to start at level one regardless, which read as the picker
+    throwing the selection away.
+    """
+    game = PlatformSession(Recorder(), progress=Progress(tmp_path / "p.json"))
+    game.press(DOWN)
+    game.press(SELECT)  # into the picker
+    for _ in range(5):
+        game.press(RIGHT)  # cursor to level 6
+    game.press(BACK)  # back to the menu, selection kept
+
+    game.press(DOWN)  # PLAY -> LVLS
+    game.press(DOWN)  # LVLS -> AUTO
+    game.press(SELECT)
+
+    assert game.auto is True
+    assert game.world.level is LEVELS[5]
+
+
 def test_auto_play_plays_without_any_keys_held(auto):
     game, _ = auto
     start = game.world.x

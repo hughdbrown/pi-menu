@@ -208,3 +208,99 @@ def test_the_escape_check_happens_before_the_interrupt_is_disabled():
 
     source = FIRMWARE.read_text()
     assert source.index("escape_requested()") < source.index("micropython.kbd_intr(-1)")
+
+
+# -- audio ---------------------------------------------------------------
+#
+# These exist because the first release of the tone handler passed the
+# synth a bit index where it wants a waveform mask and a byte where it
+# wants a float, the real binding raised on both, and the firmware's
+# failure guard -- rightly -- chose a silent panel over a dark one. The
+# fake channel now raises exactly where the hardware does, so the suite
+# hears what the bench would.
+
+
+def test_a_whole_tune_reaches_the_synth_and_audio_survives(pico):
+    """Play a real tune through the wire; nothing may trip the guard."""
+    from pi_menu import music as chiptune
+
+    firmware, path = pico
+    display = SerialDisplay(port=path)
+    try:
+        player = chiptune.Player(display.play_tone)
+        player.play(chiptune.TITLE)
+        for _ in range(40):
+            player.tick()
+        player.silence()
+
+        assert firmware._audio is True, "a note tripped the failure guard"
+        assert firmware.unicorn.playing is True or firmware.unicorn.stops > 0
+        played = [c for c in firmware.unicorn.channels.values() if c.attacks]
+        assert played, "no channel was ever triggered"
+    finally:
+        display.close()
+
+
+def test_a_tone_lands_with_the_pimoroni_masks_and_ranges(pico):
+    firmware, path = pico
+    display = SerialDisplay(port=path)
+    try:
+        display.play_tone(0, proto.WAVE_SQUARE, 440, 200)
+
+        voice = firmware.unicorn.channels[0]
+        assert voice.settings["waveforms"] == 64, "SQUARE is mask 64, not a bit index"
+        assert voice.settings["frequency"] == 440
+        assert 0.0 <= voice.settings["volume"] <= 1.0
+        assert voice.attacks == 1
+    finally:
+        display.close()
+
+
+def test_every_wire_waveform_is_a_mask_the_synth_accepts(pico):
+    firmware, path = pico
+    display = SerialDisplay(port=path)
+    try:
+        for channel, waveform in enumerate(proto.WAVEFORMS):
+            display.play_tone(channel, waveform, 440, 100)
+
+        assert firmware._audio is True
+        masks = {c.settings["waveforms"] for c in firmware.unicorn.channels.values()}
+        assert masks == {64, 16, 32, 8, 128}
+    finally:
+        display.close()
+
+
+def test_volume_zero_releases_the_note(pico):
+    firmware, path = pico
+    display = SerialDisplay(port=path)
+    try:
+        display.play_tone(0, proto.WAVE_SQUARE, 440, 200)
+        display.play_tone(0, proto.WAVE_SQUARE, 440, 0)
+
+        voice = firmware.unicorn.channels[0]
+        assert voice.releases >= 1
+    finally:
+        display.close()
+
+
+def test_hush_silences_every_channel(pico):
+    firmware, path = pico
+    display = SerialDisplay(port=path)
+    try:
+        display.play_tone(0, proto.WAVE_SQUARE, 440, 200)
+        display.play_tone(1, proto.WAVE_TRIANGLE, 220, 200)
+        display.hush()
+
+        assert firmware.unicorn.stops == 1
+        assert all(c.releases >= 1 for c in firmware.unicorn.channels.values())
+    finally:
+        display.close()
+
+
+def test_the_boot_sequence_sets_a_master_volume(pico):
+    firmware, _ = pico
+
+    assert firmware.unicorn.volume is not None, (
+        "boot never set the speaker's master volume; the +/- buttons do "
+        "nothing in this firmware, so nothing else ever would"
+    )

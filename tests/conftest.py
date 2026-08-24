@@ -56,7 +56,24 @@ class FakeChannel:
         self.attacks = 0
         self.releases = 0
 
+    VALID_WAVEFORM_MASK = 128 | 64 | 32 | 16 | 8 | 1
+
     def configure(self, **settings):
+        """Validate what the real binding validates (stellar_unicorn.cpp).
+
+        The first firmware release passed a bit index and a byte volume;
+        the real binding raised ValueError on both, the failure guard
+        silenced the panel, and a permissive fake let it all through the
+        suite. This fake raises exactly where the hardware does.
+        """
+        waveforms = settings.get("waveforms")
+        if waveforms is not None and (
+            waveforms < 0 or (waveforms & self.VALID_WAVEFORM_MASK) == 0
+        ):
+            raise ValueError("waveforms invalid")
+        volume = settings.get("volume")
+        if volume is not None and not 0.0 <= float(volume) <= 1.0:
+            raise ValueError("volume out of range. Expected 0.0 to 1.0")
         self.settings = settings
 
     def trigger_attack(self):
@@ -85,6 +102,9 @@ class FakeUnicorn:
 
     def is_pressed(self, switch):
         return self.pressed
+
+    def set_volume(self, value):
+        self.volume = value
 
     def synth_channel(self, index):
         return self.channels.setdefault(index, FakeChannel())

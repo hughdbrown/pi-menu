@@ -145,9 +145,12 @@ class PlatformSession:
             elif self.menu_entry == PICKER_ENTRY:
                 self.screen = Screen.PICKER
             else:
-                # Auto-play tours the levels from the first: the point is
-                # watching (and filming), not carrying progress forward.
-                self.start(0, auto=True)
+                # Auto-play starts wherever the cursor last was, so the
+                # way to film level N is: LVLS, move to N, Esc, AUTO.
+                # Starting the tour at level one regardless made picking
+                # a level and then choosing AUTO feel like the choice
+                # had been thrown away -- because it had.
+                self.start(self.index, auto=True)
 
     def _picker_key(self, key: str) -> None:
         last = len(self.levels) - 1

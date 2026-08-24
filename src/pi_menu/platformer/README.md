@@ -44,8 +44,10 @@ what opens the goal.
 
 **AUTO** on the menu tours the levels using the solver's own winning routes,
 so what it shows is a genuine playthrough under the real physics, not an
-animation. While it runs: **Right**/**Left** skip to the next or previous
-level, **Esc** returns to the menu.
+animation. It starts from whichever level you last had selected — so to film
+level 40: **LVLS**, move the cursor to 40, **Esc**, **AUTO**. While it runs,
+**Right**/**Left** skip to the next or previous level and **Esc** returns to
+the menu.
 
 **C** at any moment — menu, picker, mid-jump, mid-boss-fight — saves what
 the panel is showing as a PNG in `~/Pictures` (or your home directory),

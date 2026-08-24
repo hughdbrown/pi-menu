@@ -131,7 +131,8 @@ it focused, because it is what holds the keyboard.
   until the last coin is taken, then it flashes green.
 - There are no lives. Anything that kills you simply starts the level again.
 - **AUTO** on the menu plays the game itself, using the level solver's own
-  winning routes — Right/Left skip between levels, Esc stops the tour.
+  winning routes. It starts from the level last selected in LVLS —
+  Right/Left skip between levels, Esc stops the tour.
 - **C** saves what the panel is showing as a PNG in `~/Pictures`, any time.
 
 There is a fuller tour, with screenshots, in

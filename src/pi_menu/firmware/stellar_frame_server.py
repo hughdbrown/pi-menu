@@ -67,6 +67,14 @@ _channels = {}
 #: make a sound still shows pictures.
 _audio = True
 
+#: The wire protocol numbers waveforms 0-4; the PicoSynth wants its own
+#: mask values (see pico_synth.hpp: SQUARE=64, TRIANGLE=16, SAW=32,
+#: SINE=8, NOISE=128). Passing anything else raises ValueError, and one
+#: raise is enough to trip the failure guard and silence the panel for
+#: good -- which is precisely how the first release of this file played
+#: no music at all.
+WAVEFORM_MASKS = (64, 16, 32, 8, 128)
+
 _stdin = sys.stdin.buffer
 _stdout = sys.stdout.buffer
 
@@ -128,15 +136,19 @@ def tone(channel, waveform, frequency, volume):
     global _audio
     if not _audio or channel >= SYNTH_CHANNELS:
         return
+    if waveform >= len(WAVEFORM_MASKS):
+        return
     try:
         voice = _channels.get(channel)
         if voice is None:
             voice = unicorn.synth_channel(channel)
             _channels[channel] = voice
         voice.configure(
-            waveforms=1 << waveform,
+            waveforms=WAVEFORM_MASKS[waveform],
             frequency=frequency,
-            volume=volume * 128,
+            # The binding wants floats 0.0-1.0 and *raises* outside that
+            # range; the wire carries a byte.
+            volume=min(volume, 255) / 255.0,
             attack=0.01,
             decay=0.05,
             sustain=0.8,
@@ -249,6 +261,13 @@ def boot():
     micropython.kbd_intr(-1)
 
     unicorn.set_brightness(0.5)
+    try:
+        # The speaker's master volume. Never touched again: the +/-
+        # buttons do nothing in this firmware, because nothing reads
+        # them -- all control comes from the Pi.
+        unicorn.set_volume(0.7)
+    except Exception:
+        pass
     clear()
     return True
 
