@@ -248,9 +248,12 @@ refresh_menu() {
     # lxpanelctl can block forever waiting for a panel that will never
     # answer -- which hung this whole installer, before the step that
     # offers to flash the Pico. Never let it wait more than a moment, and
-    # never let it near a session with no X display.
+    # never let it near a session with no X display. --kill-after matters:
+    # plain `timeout` only sends SIGTERM, and a process that ignores or
+    # cannot answer that goes on blocking us forever. The SIGKILL a second
+    # later is the actual upper bound.
     if command -v lxpanelctl >/dev/null 2>&1 && [ -n "${DISPLAY:-}" ]; then
-        timeout 5 lxpanelctl restart >/dev/null 2>&1 || true
+        timeout --kill-after=1s 5s lxpanelctl restart >/dev/null 2>&1 || true
     fi
 }
 

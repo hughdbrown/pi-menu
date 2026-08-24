@@ -7,8 +7,10 @@ points at a temporary directory throughout.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -148,3 +150,47 @@ def test_uninstall_removes_what_install_created_but_keeps_your_app_list(tmp_path
 
 def test_uninstall_is_safe_to_run_when_nothing_is_installed(tmp_path):
     assert run_bash("uninstall", tmp_path).returncode == 0
+
+
+def timeout_supports_a_kill_deadline() -> bool:
+    if shutil.which("timeout") is None:
+        return False
+    probe = subprocess.run(
+        ["timeout", "--kill-after=1s", "1s", "true"], capture_output=True
+    )
+    return probe.returncode == 0
+
+
+@pytest.mark.skipif(
+    not timeout_supports_a_kill_deadline(), reason="needs GNU timeout --kill-after"
+)
+def test_a_wedged_lxpanelctl_cannot_hang_the_installer(tmp_path):
+    # The real hang: lxpanelctl waiting on a panel that will never answer.
+    # SIGTERM alone is not enough to model it -- a process is free to
+    # ignore that -- so the stub does, and only SIGKILL can end it.
+    stub_bin = tmp_path / "bin"
+    stub_bin.mkdir()
+    stub = stub_bin / "lxpanelctl"
+    stub.write_text("#!/bin/sh\ntrap '' TERM\nsleep 300\n", encoding="utf-8")
+    stub.chmod(0o755)
+
+    home = tmp_path / "home"
+    home.mkdir()
+    started = time.monotonic()
+    result = subprocess.run(
+        ["bash", "-c", f'source "{INSTALL}"\nrefresh_menu'],
+        capture_output=True,
+        text=True,
+        env={
+            "HOME": str(home),
+            "PATH": f"{stub_bin}:{os.environ['PATH']}",
+            "USER": "tester",
+            "DISPLAY": ":0",
+        },
+        timeout=60,
+    )
+    elapsed = time.monotonic() - started
+
+    assert result.returncode == 0, result.stderr
+    # 5s to give up, 1s more to kill: anything past that is the old hang.
+    assert elapsed < 15, f"refresh_menu took {elapsed:.1f}s"
