@@ -91,9 +91,13 @@ ICON_LEVELS = tuple(  # a 4x4 box, hollow in the centre
     for y in range(4)
     if x in (0, 3) or y in (0, 3)
 )
-ICON_SETTINGS = (  # a 2x2 block with the four odd teeth Hugh specified
-    (0, 0), (1, 0), (0, 1), (1, 1),
-    (2, -1), (-1, 0), (3, 1), (1, 3),
+#: Drawn from the shape as given, row by row, rather than as offsets:
+#: a stepped diagonal, which reads as a slider or a wrench at this size.
+ICON_SETTINGS = tuple(
+    (x, y)
+    for y, row in enumerate(("..X.", "XXX.", ".XXX", ".X.."))
+    for x, cell in enumerate(row)
+    if cell == "X"
 )
 
 #: Where each icon's origin sits on the panel, top row of the marker
