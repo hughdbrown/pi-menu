@@ -23,6 +23,7 @@ from .levels import LEVELS, title
 from .autopilot import Autopilot
 from .progress import Progress
 from .routes import ROUTES
+from .sound_settings import Sound
 from .world import Event, World
 
 #: Called with a complete framebuffer whenever the panel should change.
@@ -65,11 +66,15 @@ class PlatformSession:
         progress: Progress | None = None,
         levels: Sequence[Level] = LEVELS,
         music: "chiptune.Player | None" = None,
+        sound: Sound = Sound.MUSIC,
     ) -> None:
         self.levels = tuple(levels)
         # A player with nowhere to send notes is silent and harmless,
         # which is what every machine without a panel gets.
         self.music = music if music is not None else chiptune.Player()
+        self.sound = sound
+        self._jumps_seen = 0
+        self._fist_was_out = False
         self.progress = progress if progress is not None else Progress()
         self.screen = Screen.MENU
         self.menu_entry = PLAY_ENTRY
@@ -183,6 +188,8 @@ class PlatformSession:
         self.screen = Screen.PLAY
         self.auto = auto
         self._pilot = Autopilot(ROUTES[self.levels[index].id]) if auto else None
+        self._jumps_seen = 0
+        self._fist_was_out = False
 
     def _to_menu(self) -> None:
         self.screen = Screen.MENU
@@ -207,14 +214,58 @@ class PlatformSession:
 
     # -- what is playing -------------------------------------------------
 
+    def set_sound(self, mode: Sound) -> None:
+        """Switch between music, event sounds, and silence, immediately."""
+        self.sound = mode
+        self._update_music()
+
     def _update_music(self) -> None:
-        """Keep the tune in step with the screen.
+        """Keep the speaker in step with the screen and the sound setting.
 
         Asking for the tune that is already playing does nothing, so this
         is safe to call on every tick and there is no separate bookkeeping
         about what changed.
         """
-        self.music.play(self._tune_for_screen())
+        if self.sound is Sound.OFF:
+            self.music.play(None)
+            return
+        if self.sound is Sound.MUSIC:
+            self.music.play(self._tune_for_screen())
+            return
+        # Events only: no background tunes, but a death or a win is an
+        # event and its jingle still plays.
+        if self.screen is Screen.DEAD:
+            self.music.play(chiptune.DEATH)
+            return
+        if self.screen is Screen.WON:
+            self.music.play(chiptune.FANFARE)
+            return
+        playing = self.music.tune
+        if playing is not None and not playing.loop and not self.music.finished:
+            return  # a blip is mid-flight; let it end
+        self.music.play(None)
+
+    def _sound_effects(self, event: Event) -> None:
+        """Blip for what just happened, when events are what sounds.
+
+        The counters advance in every mode, so switching to effects
+        mid-level starts from now rather than replaying the backlog.
+        """
+        blip = None
+        fist_out = bool(self.world.fist_cells())
+        if fist_out and not self._fist_was_out:
+            blip = chiptune.FIST_THUD
+        self._fist_was_out = fist_out
+
+        if self.world.jumps != self._jumps_seen:
+            self._jumps_seen = self.world.jumps
+            blip = chiptune.JUMP_BLIP
+
+        if event is Event.COIN:
+            blip = chiptune.COIN_BLIP
+
+        if blip is not None and self.sound is Sound.EFFECTS:
+            self.music.play(blip, restart=True)
 
     def _tune_for_screen(self):
         if self.screen is Screen.DEAD:
@@ -238,6 +289,7 @@ class PlatformSession:
         else:
             held = self._held
         event = self.world.step(held)
+        self._sound_effects(event)
         if event is Event.DIED:
             self.screen = Screen.DEAD
             self._countdown = FLASH_TICKS

@@ -102,9 +102,11 @@ class Player:
         self._tick = 0
         self._sounding: dict = {}
 
-    def play(self, tune: Tune | None) -> None:
-        """Start a tune from the top. The same tune again is left alone."""
-        if tune is self.tune:
+    def play(self, tune: Tune | None, restart: bool = False) -> None:
+        """Start a tune from the top. The same tune again is left alone,
+        unless ``restart`` asks for it -- which is how one sound effect
+        can fire twice in a row."""
+        if tune is self.tune and not restart:
             return
         self.silence()
         self.tune = tune
@@ -289,6 +291,21 @@ FANFARE = Tune(
     ticks_per_step=3,
     loop=False,
 )
+
+# ----------------------------------------------------------------------
+# Sound effects, for the sound-on-events setting. Each is a few ticks
+# long, plays once, and restarts cleanly if the same thing happens twice.
+# ----------------------------------------------------------------------
+
+#: A coin. Two bright notes, up and gone.
+COIN_BLIP = Tune("coin", lead="c6 e6", ticks_per_step=1, loop=False)
+
+#: Leaving the ground. A quick fifth.
+JUMP_BLIP = Tune("jump", lead="c5 g5", ticks_per_step=1, loop=False)
+
+#: A boss fist coming down. Noise, low, brief.
+FIST_THUD = Tune("fist", lead="", drum="c2 g2", ticks_per_step=2, loop=False)
+
 
 #: What plays behind each level, by index. The finale gets its own.
 def level_tune(index: int, total: int, has_boss: bool) -> Tune:

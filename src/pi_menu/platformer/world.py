@@ -123,6 +123,8 @@ class World:
         self._buffer = 0
         self._jump_was_held = False
         self._jumping = False
+        #: How many jumps have fired this attempt, for jump sounds.
+        self.jumps = 0
 
     # -- reading ---------------------------------------------------------
 
@@ -379,6 +381,7 @@ class World:
             self._coyote = 0
             self.on_ground = False
             self._jumping = True
+            self.jumps += 1
         elif self._jumping and not jump and self.vy < CUT_JUMP_VELOCITY:
             # Released early: cut the rise short rather than ending it, so
             # a tap is still a jump and not a twitch.

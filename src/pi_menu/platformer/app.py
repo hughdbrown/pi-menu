@@ -24,6 +24,7 @@ from ..display.pump import FramePump
 from ..palette import BG, FG, MUTED, WARN
 from .keys import KEYSYMS, HeldKeys
 from .session import PlatformSession
+from .sound_settings import Sound, load as load_sound, save as save_sound
 from .world import TICK_HZ
 
 TICK_MS = round(1000 / TICK_HZ)
@@ -45,7 +46,9 @@ class PlatformApp:
         self.root = root
         self.pump = pump
         self.session = PlatformSession(
-            pump.submit, music=chiptune.Player(pump.play_tone)
+            pump.submit,
+            music=chiptune.Player(pump.play_tone),
+            sound=load_sound(),
         )
         self.keys = HeldKeys()
 
@@ -79,6 +82,7 @@ class PlatformApp:
         style.configure("Warn.TLabel", background=BG, foreground=WARN)
         style.configure("Title.TLabel", background=BG, foreground=FG, font=("", 15, "bold"))
         style.configure("TButton", padding=(10, 6))
+        style.configure("TRadiobutton", background=BG, foreground=FG)
 
         outer = ttk.Frame(self.root, padding=14)
         outer.grid(row=0, column=0, sticky="nsew")
@@ -118,6 +122,27 @@ class PlatformApp:
         scale.set(self.brightness.get())
         scale.grid(row=5, column=0, sticky="ew")
 
+        ttk.Label(outer, text="Sound", style="Muted.TLabel").grid(
+            row=6, column=0, sticky="w", pady=(10, 0)
+        )
+        sounds = ttk.Frame(outer)
+        sounds.grid(row=7, column=0, sticky="w")
+        self.sound_choice = tk.StringVar(value=self.session.sound.value)
+        for label, mode in (
+            ("Music", Sound.MUSIC),
+            ("Effects", Sound.EFFECTS),
+            ("Off", Sound.OFF),
+        ):
+            ttk.Radiobutton(
+                sounds,
+                text=label,
+                value=mode.value,
+                variable=self.sound_choice,
+                command=self._on_sound,
+                # Same rule as the slider: arrow keys belong to the game.
+                takefocus=False,
+            ).pack(side="left", padx=(0, 10))
+
         # Which device is actually lighting up. A terminal preview looks
         # like a working program, so without this line there is nothing
         # on screen to say the panel is missing.
@@ -126,10 +151,10 @@ class PlatformApp:
             outer,
             text=f"Output: {panel.description}",
             style="Muted.TLabel" if panel.is_panel else "Warn.TLabel",
-        ).grid(row=6, column=0, sticky="w", pady=(12, 0))
+        ).grid(row=8, column=0, sticky="w", pady=(12, 0))
 
         ttk.Button(outer, text="Quit", command=self.quit, takefocus=False).grid(
-            row=7, column=0, sticky="e", pady=(12, 0)
+            row=9, column=0, sticky="e", pady=(12, 0)
         )
 
     def _bind_keys(self) -> None:
@@ -202,6 +227,11 @@ class PlatformApp:
     def _on_brightness(self, value: str) -> None:
         self.brightness.set(int(float(value)))
         self.pump.set_brightness(self.brightness.get() / 100.0)
+
+    def _on_sound(self) -> None:
+        mode = Sound(self.sound_choice.get())
+        self.session.set_sound(mode)
+        save_sound(mode)
 
     def quit(self) -> None:
         self._cancel_tick()

@@ -736,3 +736,110 @@ def test_arrow_keys_do_not_skip_levels_in_ordinary_play(session):
     game.press(RIGHT)
 
     assert game.world.level is LEVELS[0]
+
+
+# -- the sound setting ---------------------------------------------------
+
+
+def _session_with_sound(tmp_path, sound):
+    from pi_menu import music as chiptune
+    from pi_menu.platformer.sound_settings import Sound  # noqa: F401
+
+    notes = MusicRecorder()
+    game = PlatformSession(
+        Recorder(),
+        progress=Progress(tmp_path / "p.json"),
+        music=chiptune.Player(notes),
+        sound=sound,
+    )
+    return game, notes
+
+
+def test_sound_off_never_makes_a_sound(tmp_path):
+    from pi_menu.platformer.sound_settings import Sound
+
+    game, notes = _session_with_sound(tmp_path, Sound.OFF)
+    game.press(SELECT)
+    for _ in range(30):
+        game.tick()
+
+    assert game.music.tune is None
+    assert notes.notes == []
+
+
+def test_effects_mode_plays_no_background_tune(tmp_path):
+    from pi_menu.platformer.sound_settings import Sound
+
+    game, notes = _session_with_sound(tmp_path, Sound.EFFECTS)
+    game.press(SELECT)
+    for _ in range(30):
+        game.tick()
+
+    # Standing still: no events, so nothing to hear.
+    assert game.music.tune is None
+    assert notes.notes == []
+
+
+def test_a_jump_blips_in_effects_mode(tmp_path):
+    from pi_menu import music as chiptune
+    from pi_menu.platformer.sound_settings import Sound
+
+    game, notes = _session_with_sound(tmp_path, Sound.EFFECTS)
+    game.press(SELECT)
+    for _ in range(5):
+        game.tick()  # land on the ground first
+    game.press(UP)
+    game.tick()
+
+    assert game.music.tune is chiptune.JUMP_BLIP
+    assert notes.notes, "the jump made no sound"
+
+
+def test_a_coin_blips_somewhere_in_an_auto_run(tmp_path):
+    from pi_menu import music as chiptune
+    from pi_menu.platformer.sound_settings import Sound
+
+    game, _ = _session_with_sound(tmp_path, Sound.EFFECTS)
+    game.start(0, auto=True)
+
+    heard = False
+    for _ in range(600):
+        game.tick()
+        if game.music.tune is chiptune.COIN_BLIP:
+            heard = True
+            break
+    assert heard, "the route collects every coin, yet no coin blipped"
+
+
+def test_the_death_jingle_still_plays_in_effects_mode(tmp_path):
+    from pi_menu import music as chiptune
+    from pi_menu.platformer.sound_settings import Sound
+
+    game, _ = _session_with_sound(tmp_path, Sound.EFFECTS)
+    game.press(SELECT)
+    game.world.y = float(game.world.level.height)
+    game.tick()
+
+    assert game.music.tune is chiptune.DEATH
+
+
+def test_switching_sound_off_silences_immediately(musical):
+    from pi_menu.platformer.sound_settings import Sound
+
+    game, _ = musical
+    assert game.music.tune is not None
+
+    game.set_sound(Sound.OFF)
+
+    assert game.music.tune is None
+
+
+def test_switching_back_to_music_resumes_the_tune(musical):
+    from pi_menu import music as chiptune
+    from pi_menu.platformer.sound_settings import Sound
+
+    game, _ = musical
+    game.set_sound(Sound.OFF)
+    game.set_sound(Sound.MUSIC)
+
+    assert game.music.tune is chiptune.TITLE

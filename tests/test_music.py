@@ -263,3 +263,20 @@ def test_a_player_with_no_panel_to_talk_to_still_runs():
         music.tick()
 
     assert music.tune is TITLE
+
+
+def test_restart_replays_a_tune_the_player_already_holds():
+    from pi_menu.music import Player, Tune
+
+    notes = []
+    player = Player(lambda *note: notes.append(note))
+    blip = Tune("blip", lead="c6 e6", ticks_per_step=1, loop=False)
+
+    player.play(blip)
+    first = len(notes)
+    player.play(blip)  # the same tune again is left alone
+    assert len(notes) == first
+
+    player.play(blip, restart=True)
+    assert len(notes) > first, "restart did not strike the note again"
+    assert player.step == 0
