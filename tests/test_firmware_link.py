@@ -283,6 +283,31 @@ def test_volume_zero_releases_the_note(pico):
         display.close()
 
 
+def test_a_rest_at_frequency_zero_releases_and_audio_survives(pico):
+    """The music player writes a rest as frequency 0, volume 0.
+
+    The real binding raises on a frequency of 0, so a release must never
+    reconfigure the voice -- on the bench this left the first chord of
+    the title tune droning forever, with the failure guard tripped and
+    every later note (hush included) ignored.
+    """
+    firmware, path = pico
+    display = SerialDisplay(port=path)
+    try:
+        display.play_tone(0, proto.WAVE_SQUARE, 659, 90)
+        display.play_tone(0, proto.WAVE_SQUARE, 0, 0)
+
+        assert firmware._audio is True, "the rest tripped the failure guard"
+        assert firmware.unicorn.channels[0].releases >= 1
+
+        display.play_tone(0, proto.WAVE_SQUARE, 784, 90)
+        assert firmware.unicorn.channels[0].attacks == 2, (
+            "audio never came back after the rest"
+        )
+    finally:
+        display.close()
+
+
 def test_hush_silences_every_channel(pico):
     firmware, path = pico
     display = SerialDisplay(port=path)

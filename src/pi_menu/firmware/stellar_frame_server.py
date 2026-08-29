@@ -140,6 +140,15 @@ def tone(channel, waveform, frequency, volume):
         return
     try:
         voice = _channels.get(channel)
+        if not volume:
+            # A release must not reconfigure: the music player writes a
+            # rest as frequency 0, and the binding raises on that -- one
+            # raise trips this guard mid-note, leaving the note droning
+            # and the firmware deaf to everything after, hush included.
+            if voice is not None:
+                voice.trigger_release()
+                unicorn.play_synth()
+            return
         if voice is None:
             voice = unicorn.synth_channel(channel)
             _channels[channel] = voice
@@ -154,10 +163,7 @@ def tone(channel, waveform, frequency, volume):
             sustain=0.8,
             release=0.05,
         )
-        if volume:
-            voice.trigger_attack()
-        else:
-            voice.trigger_release()
+        voice.trigger_attack()
         unicorn.play_synth()
     except Exception:
         _audio = False

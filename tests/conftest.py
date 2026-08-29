@@ -74,6 +74,9 @@ class FakeChannel:
         volume = settings.get("volume")
         if volume is not None and not 0.0 <= float(volume) <= 1.0:
             raise ValueError("volume out of range. Expected 0.0 to 1.0")
+        frequency = settings.get("frequency")
+        if frequency is not None and frequency <= 0:
+            raise ValueError("frequency out of range")
         self.settings = settings
 
     def trigger_attack(self):
