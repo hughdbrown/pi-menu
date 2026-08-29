@@ -15,8 +15,9 @@ from pi_menu.platformer import world as physics
 from pi_menu.platformer import render
 from pi_menu.platformer.levels import LEVELS
 from pi_menu.platformer.progress import Progress
+from pi_menu.platformer.sound_settings import DEFAULTS
 from pi_menu.platformer.session import (
-    AUTO_ENTRY,
+    SETTINGS_ENTRY,
     BACK,
     DOWN,
     FLASH_TICKS,
@@ -60,7 +61,7 @@ def test_opening_the_session_shows_the_menu(session):
 
     assert game.screen is Screen.MENU
     assert len(recorder.frames) == 1
-    assert recorder.last == render.draw_menu(PLAY_ENTRY, phase=0, sound="music")
+    assert recorder.last == render.draw_menu(PLAY_ENTRY, phase=0)
 
 
 def test_every_frame_is_the_full_size(session):
@@ -119,7 +120,7 @@ def test_the_menu_selection_does_not_wrap_past_the_ends(session):
 
     for _ in range(4):
         game.press(DOWN)
-    assert game.menu_entry == AUTO_ENTRY
+    assert game.menu_entry == SETTINGS_ENTRY
 
 
 def test_choosing_play_starts_the_level(session):
@@ -630,14 +631,17 @@ def playing_musical(tmp_path):
 
 @pytest.fixture
 def auto(session):
+    """Auto-play, started the way ``pi-platformer --auto`` starts it.
+
+    It left the panel menu when SETTINGS took the third slot; the tour
+    itself is unchanged and still shipped for screen captures.
+    """
     game, recorder = session
-    game.press(DOWN)
-    game.press(DOWN)
-    game.press(SELECT)
+    game.start(game.index, auto=True)
     return game, recorder
 
 
-def test_the_third_menu_entry_starts_auto_play(auto):
+def test_starting_auto_play_runs_the_tour(auto):
     game, _ = auto
 
     assert game.screen is Screen.PLAY
@@ -646,11 +650,7 @@ def test_the_third_menu_entry_starts_auto_play(auto):
 
 
 def test_a_level_chosen_in_the_picker_carries_into_auto_play(tmp_path):
-    """LVLS, move the cursor, Esc, AUTO: auto-play starts on that level.
-
-    It used to start at level one regardless, which read as the picker
-    throwing the selection away.
-    """
+    """Picking a level then starting the tour begins on that level."""
     game = PlatformSession(Recorder(), progress=Progress(tmp_path / "p.json"))
     game.press(DOWN)
     game.press(SELECT)  # into the picker
@@ -658,9 +658,7 @@ def test_a_level_chosen_in_the_picker_carries_into_auto_play(tmp_path):
         game.press(RIGHT)  # cursor to level 6
     game.press(BACK)  # back to the menu, selection kept
 
-    game.press(DOWN)  # PLAY -> LVLS
-    game.press(DOWN)  # LVLS -> AUTO
-    game.press(SELECT)
+    game.start(game.index, auto=True)
 
     assert game.auto is True
     assert game.world.level is LEVELS[5]
@@ -738,154 +736,124 @@ def test_arrow_keys_do_not_skip_levels_in_ordinary_play(session):
     assert game.world.level is LEVELS[0]
 
 
-# -- the sound setting ---------------------------------------------------
 
 
-def _session_with_sound(tmp_path, sound):
+# -- the settings screen -------------------------------------------------
+
+
+def _settings_session(tmp_path, **kwargs):
     from pi_menu import music as chiptune
-    from pi_menu.platformer.sound_settings import Sound  # noqa: F401
-
-    notes = MusicRecorder()
-    game = PlatformSession(
-        Recorder(),
-        progress=Progress(tmp_path / "p.json"),
-        music=chiptune.Player(notes),
-        sound=sound,
-    )
-    return game, notes
-
-
-def test_sound_off_never_makes_a_sound(tmp_path):
-    from pi_menu.platformer.sound_settings import Sound
-
-    game, notes = _session_with_sound(tmp_path, Sound.OFF)
-    game.press(SELECT)
-    for _ in range(30):
-        game.tick()
-
-    assert game.music.tune is None
-    assert notes.notes == []
-
-
-def test_effects_mode_plays_no_background_tune(tmp_path):
-    from pi_menu.platformer.sound_settings import Sound
-
-    game, notes = _session_with_sound(tmp_path, Sound.EFFECTS)
-    game.press(SELECT)
-    for _ in range(30):
-        game.tick()
-
-    # Standing still: no events, so nothing to hear.
-    assert game.music.tune is None
-    assert notes.notes == []
-
-
-def test_a_jump_blips_in_effects_mode(tmp_path):
-    from pi_menu import music as chiptune
-    from pi_menu.platformer.sound_settings import Sound
-
-    game, notes = _session_with_sound(tmp_path, Sound.EFFECTS)
-    game.press(SELECT)
-    for _ in range(5):
-        game.tick()  # land on the ground first
-    game.press(UP)
-    game.tick()
-
-    assert game.music.tune is chiptune.JUMP_BLIP
-    assert notes.notes, "the jump made no sound"
-
-
-def test_a_coin_blips_somewhere_in_an_auto_run(tmp_path):
-    from pi_menu import music as chiptune
-    from pi_menu.platformer.sound_settings import Sound
-
-    game, _ = _session_with_sound(tmp_path, Sound.EFFECTS)
-    game.start(0, auto=True)
-
-    heard = False
-    for _ in range(600):
-        game.tick()
-        if game.music.tune is chiptune.COIN_BLIP:
-            heard = True
-            break
-    assert heard, "the route collects every coin, yet no coin blipped"
-
-
-def test_the_death_jingle_still_plays_in_effects_mode(tmp_path):
-    from pi_menu import music as chiptune
-    from pi_menu.platformer.sound_settings import Sound
-
-    game, _ = _session_with_sound(tmp_path, Sound.EFFECTS)
-    game.press(SELECT)
-    game.world.y = float(game.world.level.height)
-    game.tick()
-
-    assert game.music.tune is chiptune.DEATH
-
-
-def test_switching_sound_off_silences_immediately(musical):
-    from pi_menu.platformer.sound_settings import Sound
-
-    game, _ = musical
-    assert game.music.tune is not None
-
-    game.set_sound(Sound.OFF)
-
-    assert game.music.tune is None
-
-
-def test_switching_back_to_music_resumes_the_tune(musical):
-    from pi_menu import music as chiptune
-    from pi_menu.platformer.sound_settings import Sound
-
-    game, _ = musical
-    game.set_sound(Sound.OFF)
-    game.set_sound(Sound.MUSIC)
-
-    assert game.music.tune is chiptune.TITLE
-
-
-def test_left_and_right_cycle_the_sound_on_the_menu(tmp_path):
-    from pi_menu.platformer.sound_settings import Sound
-
-    game, _ = _session_with_sound(tmp_path, Sound.MUSIC)
-
-    game.press(RIGHT)
-    assert game.sound is Sound.EFFECTS
-    game.press(RIGHT)
-    assert game.sound is Sound.OFF
-    game.press(RIGHT)
-    assert game.sound is Sound.MUSIC
-    game.press(LEFT)
-    assert game.sound is Sound.OFF
-
-
-def test_cycling_the_sound_saves_the_choice(tmp_path):
-    from pi_menu import music as chiptune
-    from pi_menu.platformer.sound_settings import Sound
+    from pi_menu.platformer.sound_settings import SoundSettings
 
     saved = []
     game = PlatformSession(
         Recorder(),
         progress=Progress(tmp_path / "p.json"),
         music=chiptune.Player(MusicRecorder()),
-        sound_saver=saved.append,
+        settings=SoundSettings(**kwargs) if kwargs else DEFAULTS,
+        settings_saver=saved.append,
     )
+    return game, saved
+
+
+def test_the_third_menu_entry_opens_the_settings(tmp_path):
+    game, _ = _settings_session(tmp_path)
+    game.press(RIGHT)
     game.press(RIGHT)
 
-    assert saved == [Sound.EFFECTS]
+    game.press(SELECT)
+
+    assert game.screen is Screen.SETTINGS
 
 
-def test_the_menu_shows_which_sound_is_chosen(tmp_path):
-    from pi_menu.platformer.sound_settings import Sound
+def test_left_and_right_change_the_music_loudness(tmp_path):
+    game, saved = _settings_session(tmp_path, music=4, effects=4, tune=1)
+    game.press(RIGHT)
+    game.press(RIGHT)
+    game.press(SELECT)  # into settings, on the music row
 
-    game, _ = _session_with_sound(tmp_path, Sound.MUSIC)
-    frames = {}
-    for mode in Sound:
-        game.set_sound(mode)
+    game.press(RIGHT)
+    assert game.settings.music == 5
+    game.press(LEFT)
+    game.press(LEFT)
+    assert game.settings.music == 3
+    assert saved, "the change was never saved"
+
+
+def test_the_loudness_stops_at_off_and_at_max(tmp_path):
+    from pi_menu.platformer.sound_settings import MAX_LEVEL
+
+    game, _ = _settings_session(tmp_path, music=1, effects=4, tune=1)
+    game.screen = Screen.SETTINGS
+
+    for _ in range(5):
+        game.press(LEFT)
+    assert game.settings.music == 0
+
+    for _ in range(MAX_LEVEL + 5):
+        game.press(RIGHT)
+    assert game.settings.music == MAX_LEVEL
+
+
+def test_down_moves_to_the_effects_row_and_then_the_tune(tmp_path):
+    game, _ = _settings_session(tmp_path, music=4, effects=4, tune=1)
+    game.screen = Screen.SETTINGS
+
+    game.press(DOWN)
+    game.press(RIGHT)
+    assert game.settings.effects == 5
+
+    game.press(DOWN)
+    game.press(RIGHT)
+    assert game.settings.tune == 2
+
+
+def test_escape_returns_to_the_menu(tmp_path):
+    game, _ = _settings_session(tmp_path)
+    game.screen = Screen.SETTINGS
+
+    game.press(BACK)
+
+    assert game.screen is Screen.MENU
+
+
+def test_silent_music_plays_no_tune(tmp_path):
+    game, _ = _settings_session(tmp_path, music=0, effects=4, tune=1)
+
+    assert game.music.tune is None
+
+    game.press(SELECT)  # play
+    for _ in range(20):
+        game.tick()
+    assert game.music.tune is None
+
+
+def test_turning_the_music_up_starts_it(tmp_path):
+    game, _ = _settings_session(tmp_path, music=0, effects=4, tune=1)
+    game.screen = Screen.SETTINGS
+
+    game.press(RIGHT)
+
+    assert game.music.tune is not None
+
+
+def test_the_chosen_tune_is_what_a_level_plays(tmp_path):
+    from pi_menu.music import GAME_TUNES
+
+    game, _ = _settings_session(tmp_path, music=6, effects=6, tune=3)
+    game.press(SELECT)
+
+    assert game.music.tune is GAME_TUNES[2]
+
+
+def test_each_settings_row_looks_different(tmp_path):
+    game, _ = _settings_session(tmp_path)
+    game.screen = Screen.SETTINGS
+
+    frames = set()
+    for _ in range(3):
         game.push()
-        frames[mode] = game.framebuffer()
+        frames.add(game.framebuffer())
+        game.press(DOWN)
 
-    assert len(set(frames.values())) == len(frames), (
-        "every sound mode must look different on the menu"
-    )
+    assert len(frames) == 3, "the marked row must be visible"

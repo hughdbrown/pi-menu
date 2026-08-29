@@ -23,7 +23,7 @@ from .levels import LEVELS, title
 from .autopilot import Autopilot
 from .progress import Progress
 from .routes import ROUTES
-from .sound_settings import Sound
+from .sound_settings import DEFAULTS, MAX_LEVEL, SoundSettings
 from .world import Event, World
 
 #: Called with a complete framebuffer whenever the panel should change.
@@ -42,8 +42,13 @@ GAME_KEYS = {LEFT: physics.LEFT, RIGHT: physics.RIGHT, UP: physics.JUMP}
 
 PLAY_ENTRY = 0
 PICKER_ENTRY = 1
-AUTO_ENTRY = 2
+SETTINGS_ENTRY = 2
 MENU_ENTRIES = 3
+
+#: The rows of the settings screen, top to bottom.
+SETTINGS_MUSIC = 0
+SETTINGS_FX = 1
+SETTINGS_TUNE = 2
 
 #: How long a death or a win holds the screen before moving on.
 FLASH_TICKS = 8
@@ -52,6 +57,7 @@ FLASH_TICKS = 8
 class Screen(enum.Enum):
     MENU = "menu"
     PICKER = "picker"
+    SETTINGS = "settings"
     PLAY = "play"
     DEAD = "dead"
     WON = "won"
@@ -66,15 +72,17 @@ class PlatformSession:
         progress: Progress | None = None,
         levels: Sequence[Level] = LEVELS,
         music: "chiptune.Player | None" = None,
-        sound: Sound = Sound.MUSIC,
-        sound_saver: Callable[[Sound], None] | None = None,
+        settings: SoundSettings = DEFAULTS,
+        settings_saver: Callable[[SoundSettings], None] | None = None,
     ) -> None:
         self.levels = tuple(levels)
         # A player with nowhere to send notes is silent and harmless,
         # which is what every machine without a panel gets.
         self.music = music if music is not None else chiptune.Player()
-        self.sound = sound
-        self._sound_saver = sound_saver
+        self.settings = settings
+        self._settings_saver = settings_saver
+        self._settings_row = SETTINGS_MUSIC
+        self._apply_gains()
         self._jumps_seen = 0
         self._fist_was_out = False
         self.progress = progress if progress is not None else Progress()
@@ -126,6 +134,8 @@ class PlatformSession:
             self._menu_key(key)
         elif self.screen is Screen.PICKER:
             self._picker_key(key)
+        elif self.screen is Screen.SETTINGS:
+            self._settings_key(key)
         elif self.screen is Screen.PLAY:
             if key == BACK:
                 self._to_menu()
@@ -142,17 +152,10 @@ class PlatformSession:
         self._held.discard(GAME_KEYS.get(key, key))
 
     def _menu_key(self, key: str) -> None:
-        # Left/Right cycle the sound setting -- the menu has no room for
-        # a fourth word, so the corner bar is the whole display of it.
-        if key in (LEFT, RIGHT):
-            order = list(Sound)
-            step = 1 if key == RIGHT else -1
-            here = order.index(self.sound)
-            self.set_sound(order[(here + step) % len(order)])
-            return
-        if key == UP:
+        # The icons run left to right, so Left/Right choose too.
+        if key in (UP, LEFT):
             self.menu_entry = max(0, self.menu_entry - 1)
-        elif key == DOWN:
+        elif key in (DOWN, RIGHT):
             self.menu_entry = min(MENU_ENTRIES - 1, self.menu_entry + 1)
         elif key == SELECT:
             if self.menu_entry == PLAY_ENTRY:
@@ -160,12 +163,37 @@ class PlatformSession:
             elif self.menu_entry == PICKER_ENTRY:
                 self.screen = Screen.PICKER
             else:
-                # Auto-play starts wherever the cursor last was, so the
-                # way to film level N is: LVLS, move to N, Esc, AUTO.
-                # Starting the tour at level one regardless made picking
-                # a level and then choosing AUTO feel like the choice
-                # had been thrown away -- because it had.
-                self.start(self.index, auto=True)
+                self.screen = Screen.SETTINGS
+                self._settings_row = SETTINGS_MUSIC
+
+    def _settings_key(self, key: str) -> None:
+        if key == UP:
+            self._settings_row = max(0, self._settings_row - 1)
+        elif key == DOWN:
+            self._settings_row = min(2, self._settings_row + 1)
+        elif key in (LEFT, RIGHT):
+            step = 1 if key == RIGHT else -1
+            if self._settings_row == SETTINGS_MUSIC:
+                changed = self.settings.with_music(self.settings.music + step)
+            elif self._settings_row == SETTINGS_FX:
+                changed = self.settings.with_effects(self.settings.effects + step)
+            else:
+                changed = self.settings.with_tune(self.settings.tune + step)
+            self.update_settings(changed)
+        elif key in (SELECT, BACK):
+            self.screen = Screen.MENU
+
+    def update_settings(self, settings: SoundSettings) -> None:
+        """Adopt new sound settings, apply them, and remember them."""
+        self.settings = settings
+        self._apply_gains()
+        if self._settings_saver is not None:
+            self._settings_saver(settings)
+        self._update_music()
+
+    def _apply_gains(self) -> None:
+        self.music.music_gain = self.settings.music / MAX_LEVEL
+        self.music.effects_gain = self.settings.effects / MAX_LEVEL
 
     def _picker_key(self, key: str) -> None:
         last = len(self.levels) - 1
@@ -224,44 +252,23 @@ class PlatformSession:
 
     # -- what is playing -------------------------------------------------
 
-    def set_sound(self, mode: Sound) -> None:
-        """Switch between music, event sounds, and silence, immediately."""
-        self.sound = mode
-        if self._sound_saver is not None:
-            self._sound_saver(mode)
-        self._update_music()
-
     def _update_music(self) -> None:
-        """Keep the speaker in step with the screen and the sound setting.
+        """Keep the speaker in step with the screen and the loudnesses.
 
         Asking for the tune that is already playing does nothing, so this
         is safe to call on every tick and there is no separate bookkeeping
         about what changed.
         """
-        if self.sound is Sound.OFF:
-            self.music.play(None)
-            return
-        if self.sound is Sound.MUSIC:
+        if self.settings.music > 0:
             self.music.play(self._tune_for_screen())
-            return
-        # Events only: no background tunes, but a death or a win is an
-        # event and its jingle still plays.
-        if self.screen is Screen.DEAD:
-            self.music.play(chiptune.DEATH)
-            return
-        if self.screen is Screen.WON:
-            self.music.play(chiptune.FANFARE)
-            return
-        playing = self.music.tune
-        if playing is not None and not playing.loop and not self.music.finished:
-            return  # a blip is mid-flight; let it end
-        self.music.play(None)
+        else:
+            self.music.play(None)
 
     def _sound_effects(self, event: Event) -> None:
-        """Blip for what just happened, when events are what sounds.
+        """Blip for what just happened, over the music if it is playing.
 
-        The counters advance in every mode, so switching to effects
-        mid-level starts from now rather than replaying the backlog.
+        The counters advance whatever the loudness, so turning effects
+        up mid-level starts from now rather than replaying the backlog.
         """
         blip = None
         fist_out = bool(self.world.fist_cells())
@@ -276,8 +283,16 @@ class PlatformSession:
         if event is Event.COIN:
             blip = chiptune.COIN_BLIP
 
-        if blip is not None and self.sound is Sound.EFFECTS:
-            self.music.play(blip, restart=True)
+        # With the music off, a death or a win still deserves its jingle
+        # -- they are events too, so they follow the effects loudness.
+        if self.settings.music == 0:
+            if event is Event.DIED:
+                blip = chiptune.DEATH
+            elif event is Event.WON:
+                blip = chiptune.FANFARE
+
+        if blip is not None and self.settings.effects > 0:
+            self.music.effect(blip)
 
     def _tune_for_screen(self):
         if self.screen is Screen.DEAD:
@@ -286,7 +301,10 @@ class PlatformSession:
             return chiptune.FANFARE
         if self.screen is Screen.PLAY:
             return chiptune.level_tune(
-                self.index, len(self.levels), self.levels[self.index].boss is not None
+                self.index,
+                len(self.levels),
+                self.levels[self.index].boss is not None,
+                choice=self.settings.tune,
             )
         return chiptune.TITLE
 
@@ -332,7 +350,15 @@ class PlatformSession:
 
     def framebuffer(self) -> bytes:
         if self.screen is Screen.MENU:
-            return render.draw_menu(self.menu_entry, self.phase, sound=self.sound.value)
+            return render.draw_menu(self.menu_entry, self.phase)
+        if self.screen is Screen.SETTINGS:
+            return render.draw_settings(
+                self.settings.music,
+                self.settings.effects,
+                self.settings.tune,
+                self._settings_row,
+                self.phase,
+            )
         if self.screen is Screen.PICKER:
             return render.draw_picker(
                 self.index, self.finished_indexes(), len(self.levels), self.phase
@@ -358,9 +384,14 @@ class PlatformSession:
 
     def status_text(self) -> str:
         if self.screen is Screen.MENU:
+            return "menu  ·  arrows choose: play, levels, settings  ·  Enter picks"
+        if self.screen is Screen.SETTINGS:
+            row = ("music", "effects", "tune")[self._settings_row]
             return (
-                "menu  ·  Up/Down to choose, Enter to pick  ·  "
-                f"Left/Right: sound ({self.sound.value})"
+                f"settings  ·  {row}  ·  Left/Right adjusts, Esc goes back  ·  "
+                f"music {self.settings.music}/{MAX_LEVEL}, "
+                f"effects {self.settings.effects}/{MAX_LEVEL}, "
+                f"tune {self.settings.tune}"
             )
         if self.screen is Screen.PICKER:
             return (

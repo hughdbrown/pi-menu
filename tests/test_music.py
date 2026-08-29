@@ -121,8 +121,19 @@ def test_a_boss_level_gets_the_demon_theme():
     assert level_tune(14, 60, has_boss=True) is DEMON
 
 
-def test_the_first_half_and_the_second_half_sound_different():
-    assert level_tune(0, 60, has_boss=False) is not level_tune(40, 60, has_boss=False)
+def test_the_chosen_tune_is_what_plays():
+    """The halves used to pick the tune; the settings screen does now."""
+    from pi_menu.music import GAME_TUNES
+
+    for choice, tune in enumerate(GAME_TUNES, start=1):
+        assert level_tune(0, 60, has_boss=False, choice=choice) is tune
+
+
+def test_an_impossible_choice_still_gives_a_tune():
+    from pi_menu.music import GAME_TUNES
+
+    assert level_tune(0, 60, has_boss=False, choice=99) is GAME_TUNES[-1]
+    assert level_tune(0, 60, has_boss=False, choice=0) is GAME_TUNES[0]
 
 
 # -- the player ----------------------------------------------------------
@@ -280,3 +291,74 @@ def test_restart_replays_a_tune_the_player_already_holds():
     player.play(blip, restart=True)
     assert len(notes) > first, "restart did not strike the note again"
     assert player.step == 0
+
+
+# -- loudness and effects over music -------------------------------------
+
+
+def test_loudness_scales_every_note(player):
+    from pi_menu.music import TITLE
+
+    music, recorder = player
+    music.music_gain = 0.5
+    music.play(TITLE)
+
+    volumes = [note[3] for note in recorder.notes if note[3]]
+    assert volumes, "nothing sounded"
+    assert all(v <= 55 for v in volumes), "half gain should halve the loudest voice"
+
+
+def test_zero_gain_sounds_nothing_audible(player):
+    from pi_menu.music import TITLE
+
+    music, recorder = player
+    music.music_gain = 0.0
+    music.play(TITLE)
+
+    assert all(note[3] == 0 for note in recorder.notes)
+
+
+def test_an_effect_plays_over_the_music_and_hands_the_channel_back(player):
+    from pi_menu.music import COIN_BLIP, TITLE
+
+    music, recorder = player
+    music.play(TITLE)
+    held = dict(music.notes_sounding())
+    assert held, "the tune should be holding notes"
+
+    recorder.notes.clear()
+    music.effect(COIN_BLIP)
+    assert recorder.notes, "the effect never sounded"
+
+    # Run it out; the borrowed channel must go back to the tune's note.
+    for _ in range(20):
+        music.tick()
+        if music._effect is None:
+            break
+    assert music._effect is None, "the effect never ended"
+    assert music.tune is TITLE, "the music was lost"
+
+
+def test_effects_have_their_own_loudness(player):
+    from pi_menu.music import COIN_BLIP
+
+    music, recorder = player
+    music.effects_gain = 0.25
+    music.effect(COIN_BLIP)
+
+    sounded = [note[3] for note in recorder.notes if note[3]]
+    assert sounded and all(v <= 30 for v in sounded)
+
+
+def test_every_gameplay_tune_is_a_real_tune():
+    from pi_menu.music import GAME_TUNES, Player
+
+    assert len(GAME_TUNES) == 5
+    for tune in GAME_TUNES:
+        recorder = Recorder()
+        music = Player(recorder)
+        music.play(tune)
+        for _ in range(120):
+            music.tick()
+        assert recorder.notes, f"{tune.name} made no sound"
+        assert tune.steps >= 32, f"{tune.name} is too short to be a loop"

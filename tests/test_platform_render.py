@@ -120,11 +120,18 @@ def test_the_selected_entry_is_brighter_than_the_other():
     assert play_selected != levels_selected
 
 
-def test_the_menu_words_do_not_overlap():
+def test_the_menu_icons_do_not_overlap():
+    """Three icons side by side, each in its own columns."""
     frame = render.draw_menu(selected=0, phase=0)
-    rows = {y for _, y in lit(frame)}
+    columns = {x for x, _ in lit(frame)}
 
-    assert len(rows) == 3 * font.GLYPH_HEIGHT, "three words, with gaps between"
+    spans = []
+    for icon, (left, _top) in render.MENU_ICONS:
+        spans.append({left + dx for dx, _ in icon})
+    for first in range(len(spans)):
+        for second in range(first + 1, len(spans)):
+            assert not spans[first] & spans[second], "two icons share a column"
+    assert columns, "the menu is blank"
 
 
 # -- the picker ----------------------------------------------------------
@@ -308,21 +315,20 @@ def test_every_colour_the_panel_uses_is_distinct():
 # -- the redrawn menu ----------------------------------------------------
 
 
-def test_the_menu_marks_the_selected_entry_in_the_spare_column():
+def test_the_menu_marks_the_selected_entry_beneath_it():
     frame = render.draw_menu(selected=0, phase=0)
-    markers = {y for x, y in lit(frame) if x == 0}
+    markers = {x for x, y in lit(frame) if y == render.MENU_MARKER_ROW}
 
     assert markers, "nothing marks the selection"
-    assert all(y < render.MENU_TOP + font.GLYPH_HEIGHT for y in markers)
 
 
 def test_the_marker_moves_with_the_selection():
     marks = [
-        {y for x, y in lit(render.draw_menu(entry, 0)) if x == 0}
+        {x for x, y in lit(render.draw_menu(entry, 0)) if y == render.MENU_MARKER_ROW}
         for entry in range(3)
     ]
 
-    assert all(marks)
+    assert all(marks), "some entry has no marker"
     assert len({frozenset(mark) for mark in marks}) == 3
 
 
@@ -494,3 +500,46 @@ def test_a_fist_and_a_fireball_are_drawn_in_front():
 
     assert render.FIST in seen
     assert render.FIREBALL in seen
+
+
+# -- the settings screen -------------------------------------------------
+
+
+def test_the_settings_screen_shows_both_loudness_bars():
+    """Empty slots stay dimly drawn, so an empty bar is still a bar --
+    the loudness shows in the colours, not in how many pixels are on."""
+    quiet = render.draw_settings(music=0, effects=0, tune=1, row=0)
+    half = render.draw_settings(music=4, effects=4, tune=1, row=0)
+    loud = render.draw_settings(music=8, effects=8, tune=1, row=0)
+
+    assert quiet != half != loud and quiet != loud
+
+    def bright(frame):
+        return sum(
+            1
+            for x, y in lit(frame)
+            if frame[3 * (y * WIDTH + x) : 3 * (y * WIDTH + x) + 3]
+            != bytes(render.EMPTY_SLOT)
+        )
+
+    assert bright(quiet) < bright(half) < bright(loud)
+
+
+def test_the_settings_screen_shows_the_tune_number():
+    one = render.draw_settings(music=4, effects=4, tune=1, row=0)
+    five = render.draw_settings(music=4, effects=4, tune=5, row=0)
+
+    assert one != five, "the tune number is not drawn"
+
+
+def test_the_settings_screen_stays_on_the_panel():
+    for row in range(3):
+        frame = render.draw_settings(music=8, effects=8, tune=5, row=row)
+        assert all(0 <= x < WIDTH and 0 <= y < HEIGHT for x, y in lit(frame))
+
+
+def test_every_menu_icon_stays_on_the_panel():
+    """The settings icon has teeth at negative offsets; none may fall off."""
+    for entry in range(3):
+        frame = render.draw_menu(selected=entry, phase=0)
+        assert all(0 <= x < WIDTH and 0 <= y < HEIGHT for x, y in lit(frame))

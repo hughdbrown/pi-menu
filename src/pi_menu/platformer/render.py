@@ -78,25 +78,32 @@ CONVEYOR_TICKS = 2
 MENU_SELECTED = (0, 255, 120)
 MENU_IDLE = (28, 62, 44)
 MENU_MARKER = (255, 255, 255)
-MENU_WORDS = ("PLAY", "LVLS", "AUTO")
-#: The words start clear of the marker column. AUTO has no narrow
-#: letters and needs every remaining column.
-MENU_LEFT = 1
-MENU_TOP = 1
-#: One blank row between words: three four-row words and two gaps is
-#: fourteen rows, which is all the sixteen the panel has can spare.
-MENU_GAP = 1
 
-#: The sound setting, as a tiny bar in the menu's spare top-right
-#: corner -- there is no room for a fourth word. Three bars is music,
-#: two is effects, one dim ember is silence. Left/Right cycles it.
-SOUND_BAR_COLOUR = (255, 190, 0)
-SOUND_OFF_COLOUR = (80, 26, 26)
-SOUND_BARS = {
-    "music": ((13, 14, 15), SOUND_BAR_COLOUR),
-    "effects": ((14, 15), SOUND_BAR_COLOUR),
-    "off": ((15,), SOUND_OFF_COLOUR),
-}
+#: The menu is icons in a row now, not words in a column -- icons are
+#: narrow enough to leave room for more buttons later. Each icon is its
+#: lit pixels relative to its own origin.
+ICON_PLAY = tuple(  # a play-button triangle, pointing right
+    (0, y) for y in range(5)
+) + ((1, 1), (1, 2), (1, 3), (2, 2))
+ICON_LEVELS = tuple(  # a 4x4 box, hollow in the centre
+    (x, y)
+    for x in range(4)
+    for y in range(4)
+    if x in (0, 3) or y in (0, 3)
+)
+ICON_SETTINGS = (  # a 2x2 block with the four odd teeth Hugh specified
+    (0, 0), (1, 0), (0, 1), (1, 1),
+    (2, -1), (-1, 0), (3, 1), (1, 3),
+)
+
+#: Where each icon's origin sits on the panel, top row of the marker
+#: underneath it, in menu-entry order: play, levels, settings.
+MENU_ICONS = (
+    (ICON_PLAY, (2, 5)),
+    (ICON_LEVELS, (7, 6)),
+    (ICON_SETTINGS, (12, 6)),
+)
+MENU_MARKER_ROW = 12
 
 # -- the picker ----------------------------------------------------------
 
@@ -244,28 +251,61 @@ def _draw_demon(frame: bytearray, world: World, left: int, top: int, phase: int)
             put(frame, origin_x + x - left, origin_y + y - top, colour)
 
 
-def draw_menu(selected: int, phase: int = 0, sound: str | None = None) -> bytes:
-    """The title screen: PLAY over LVLS, with the chosen one marked.
-
-    ``sound`` is a :class:`~.sound_settings.Sound` value's name --
-    passed as a plain string so this module stays ignorant of settings.
-    """
+def draw_menu(selected: int, phase: int = 0) -> bytes:
+    """The title screen: three icons — play, levels, settings."""
     frame = blank()
-    if sound in SOUND_BARS:
-        columns, colour = SOUND_BARS[sound]
-        for x in columns:
-            put(frame, x, 0, colour)
-    for index, word in enumerate(MENU_WORDS):
+    for index, (icon, (left, top)) in enumerate(MENU_ICONS):
         chosen = index == selected
         colour = MENU_SELECTED if chosen else MENU_IDLE
-        top = MENU_TOP + index * (font.GLYPH_HEIGHT + MENU_GAP)
-        for x, y in font.pixels(word, MENU_LEFT, top):
-            put(frame, x, y, colour)
+        span = [left + dx for dx, _ in icon]
+        for dx, dy in icon:
+            put(frame, left + dx, top + dy, colour)
         if chosen:
-            # A marker in the spare column, so the choice is legible even
+            # A marker under the icon, so the choice is legible even
             # where the two greens are hard to tell apart.
-            put(frame, 0, top + 1, MENU_MARKER)
-            put(frame, 0, top + 2, MENU_MARKER)
+            centre = (min(span) + max(span)) // 2
+            put(frame, centre, MENU_MARKER_ROW, MENU_MARKER)
+            put(frame, centre + 1, MENU_MARKER_ROW, MENU_MARKER)
+    return bytes(frame)
+
+
+# -- the settings screen ---------------------------------------------------
+
+#: Loudness bars: one slot per level, filled up to the setting.
+SETTINGS_BAR_LEFT = 5
+SETTINGS_BAR_SLOTS = 8  # == sound_settings.MAX_LEVEL
+SETTINGS_MUSIC_ROW = 2
+SETTINGS_FX_ROW = 6
+SETTINGS_TUNE_ROW = 10
+MUSIC_BAR = (255, 190, 0)
+FX_BAR = (0, 200, 255)
+EMPTY_SLOT = (36, 36, 36)
+SETTINGS_ROWS = 3  # music, effects, tune
+
+
+def _bar(frame: bytearray, top: int, level: int, colour: tuple) -> None:
+    for slot in range(SETTINGS_BAR_SLOTS):
+        lit = slot < level
+        for dy in (0, 1):
+            put(
+                frame,
+                SETTINGS_BAR_LEFT + slot,
+                top + dy,
+                colour if lit else EMPTY_SLOT,
+            )
+
+
+def draw_settings(music: int, effects: int, tune: int, row: int, phase: int = 0) -> bytes:
+    """Two loudness bars and the tune number, with the chosen row marked."""
+    frame = blank()
+    _bar(frame, SETTINGS_MUSIC_ROW, music, MUSIC_BAR)
+    _bar(frame, SETTINGS_FX_ROW, effects, FX_BAR)
+    for x, y in font.pixels(str(tune), SETTINGS_BAR_LEFT, SETTINGS_TUNE_ROW):
+        put(frame, x, y, MENU_SELECTED)
+
+    marker_top = (SETTINGS_MUSIC_ROW, SETTINGS_FX_ROW, SETTINGS_TUNE_ROW)[row]
+    put(frame, 1, marker_top, MENU_MARKER)
+    put(frame, 1, marker_top + 1, MENU_MARKER)
     return bytes(frame)
 
 

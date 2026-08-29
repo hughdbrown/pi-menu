@@ -24,7 +24,7 @@ from ..display.pump import FramePump
 from ..palette import BG, FG, MUTED, WARN
 from .keys import KEYSYMS, HeldKeys
 from .session import PlatformSession
-from .sound_settings import Sound, load as load_sound, save as save_sound
+from .sound_settings import load as load_sound, save as save_sound
 from .world import TICK_HZ
 
 TICK_MS = round(1000 / TICK_HZ)
@@ -48,8 +48,8 @@ class PlatformApp:
         self.session = PlatformSession(
             pump.submit,
             music=chiptune.Player(pump.play_tone),
-            sound=load_sound(),
-            sound_saver=save_sound,
+            settings=load_sound(),
+            settings_saver=save_sound,
         )
         self.keys = HeldKeys()
 
@@ -123,27 +123,6 @@ class PlatformApp:
         scale.set(self.brightness.get())
         scale.grid(row=5, column=0, sticky="ew")
 
-        ttk.Label(outer, text="Sound", style="Muted.TLabel").grid(
-            row=6, column=0, sticky="w", pady=(10, 0)
-        )
-        sounds = ttk.Frame(outer)
-        sounds.grid(row=7, column=0, sticky="w")
-        self.sound_choice = tk.StringVar(value=self.session.sound.value)
-        for label, mode in (
-            ("Music", Sound.MUSIC),
-            ("Effects", Sound.EFFECTS),
-            ("Off", Sound.OFF),
-        ):
-            ttk.Radiobutton(
-                sounds,
-                text=label,
-                value=mode.value,
-                variable=self.sound_choice,
-                command=self._on_sound,
-                # Same rule as the slider: arrow keys belong to the game.
-                takefocus=False,
-            ).pack(side="left", padx=(0, 10))
-
         # Which device is actually lighting up. A terminal preview looks
         # like a working program, so without this line there is nothing
         # on screen to say the panel is missing.
@@ -216,9 +195,6 @@ class PlatformApp:
     # -- output ----------------------------------------------------------
 
     def _refresh(self) -> None:
-        # The panel menu can change the sound too; the radios follow it.
-        if self.sound_choice.get() != self.session.sound.value:
-            self.sound_choice.set(self.session.sound.value)
         error = self.pump.error
         if error is not None:
             self._status.set(f"panel stopped responding: {error}")
@@ -232,9 +208,6 @@ class PlatformApp:
         self.brightness.set(int(float(value)))
         self.pump.set_brightness(self.brightness.get() / 100.0)
 
-    def _on_sound(self) -> None:
-        # The session saves the choice itself, whichever control made it.
-        self.session.set_sound(Sound(self.sound_choice.get()))
 
     def quit(self) -> None:
         self._cancel_tick()
@@ -248,13 +221,21 @@ def main(argv: list[str] | None = None) -> int:
         description="A platform game for the 16x16 Stellar Unicorn.",
     )
     add_display_args(parser)
+    parser.add_argument(
+        "--auto",
+        action="store_true",
+        help="start the recorded tour straight away, for screen captures "
+        "(Left/Right skip levels, Esc returns to the menu)",
+    )
     args = parser.parse_args(argv)
 
     display = open_display(args.backend, args.port, args.brightness)
     pump = FramePump(display)
     try:
         root = tk.Tk()
-        PlatformApp(root, pump)
+        app = PlatformApp(root, pump)
+        if args.auto:
+            app.session.start(app.session.index, auto=True)
         root.mainloop()
     finally:
         pump.close()
