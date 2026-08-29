@@ -49,6 +49,7 @@ class PlatformApp:
             pump.submit,
             music=chiptune.Player(pump.play_tone),
             sound=load_sound(),
+            sound_saver=save_sound,
         )
         self.keys = HeldKeys()
 
@@ -215,6 +216,9 @@ class PlatformApp:
     # -- output ----------------------------------------------------------
 
     def _refresh(self) -> None:
+        # The panel menu can change the sound too; the radios follow it.
+        if self.sound_choice.get() != self.session.sound.value:
+            self.sound_choice.set(self.session.sound.value)
         error = self.pump.error
         if error is not None:
             self._status.set(f"panel stopped responding: {error}")
@@ -229,9 +233,8 @@ class PlatformApp:
         self.pump.set_brightness(self.brightness.get() / 100.0)
 
     def _on_sound(self) -> None:
-        mode = Sound(self.sound_choice.get())
-        self.session.set_sound(mode)
-        save_sound(mode)
+        # The session saves the choice itself, whichever control made it.
+        self.session.set_sound(Sound(self.sound_choice.get()))
 
     def quit(self) -> None:
         self._cancel_tick()

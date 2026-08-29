@@ -87,6 +87,17 @@ MENU_TOP = 1
 #: fourteen rows, which is all the sixteen the panel has can spare.
 MENU_GAP = 1
 
+#: The sound setting, as a tiny bar in the menu's spare top-right
+#: corner -- there is no room for a fourth word. Three bars is music,
+#: two is effects, one dim ember is silence. Left/Right cycles it.
+SOUND_BAR_COLOUR = (255, 190, 0)
+SOUND_OFF_COLOUR = (80, 26, 26)
+SOUND_BARS = {
+    "music": ((13, 14, 15), SOUND_BAR_COLOUR),
+    "effects": ((14, 15), SOUND_BAR_COLOUR),
+    "off": ((15,), SOUND_OFF_COLOUR),
+}
+
 # -- the picker ----------------------------------------------------------
 
 #: One pixel per level, sixteen to a row with a blank row between rows.
@@ -233,9 +244,17 @@ def _draw_demon(frame: bytearray, world: World, left: int, top: int, phase: int)
             put(frame, origin_x + x - left, origin_y + y - top, colour)
 
 
-def draw_menu(selected: int, phase: int = 0) -> bytes:
-    """The title screen: PLAY over LVLS, with the chosen one marked."""
+def draw_menu(selected: int, phase: int = 0, sound: str | None = None) -> bytes:
+    """The title screen: PLAY over LVLS, with the chosen one marked.
+
+    ``sound`` is a :class:`~.sound_settings.Sound` value's name --
+    passed as a plain string so this module stays ignorant of settings.
+    """
     frame = blank()
+    if sound in SOUND_BARS:
+        columns, colour = SOUND_BARS[sound]
+        for x in columns:
+            put(frame, x, 0, colour)
     for index, word in enumerate(MENU_WORDS):
         chosen = index == selected
         colour = MENU_SELECTED if chosen else MENU_IDLE

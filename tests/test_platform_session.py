@@ -60,7 +60,7 @@ def test_opening_the_session_shows_the_menu(session):
 
     assert game.screen is Screen.MENU
     assert len(recorder.frames) == 1
-    assert recorder.last == render.draw_menu(PLAY_ENTRY, phase=0)
+    assert recorder.last == render.draw_menu(PLAY_ENTRY, phase=0, sound="music")
 
 
 def test_every_frame_is_the_full_size(session):
@@ -843,3 +843,49 @@ def test_switching_back_to_music_resumes_the_tune(musical):
     game.set_sound(Sound.MUSIC)
 
     assert game.music.tune is chiptune.TITLE
+
+
+def test_left_and_right_cycle_the_sound_on_the_menu(tmp_path):
+    from pi_menu.platformer.sound_settings import Sound
+
+    game, _ = _session_with_sound(tmp_path, Sound.MUSIC)
+
+    game.press(RIGHT)
+    assert game.sound is Sound.EFFECTS
+    game.press(RIGHT)
+    assert game.sound is Sound.OFF
+    game.press(RIGHT)
+    assert game.sound is Sound.MUSIC
+    game.press(LEFT)
+    assert game.sound is Sound.OFF
+
+
+def test_cycling_the_sound_saves_the_choice(tmp_path):
+    from pi_menu import music as chiptune
+    from pi_menu.platformer.sound_settings import Sound
+
+    saved = []
+    game = PlatformSession(
+        Recorder(),
+        progress=Progress(tmp_path / "p.json"),
+        music=chiptune.Player(MusicRecorder()),
+        sound_saver=saved.append,
+    )
+    game.press(RIGHT)
+
+    assert saved == [Sound.EFFECTS]
+
+
+def test_the_menu_shows_which_sound_is_chosen(tmp_path):
+    from pi_menu.platformer.sound_settings import Sound
+
+    game, _ = _session_with_sound(tmp_path, Sound.MUSIC)
+    frames = {}
+    for mode in Sound:
+        game.set_sound(mode)
+        game.push()
+        frames[mode] = game.framebuffer()
+
+    assert len(set(frames.values())) == len(frames), (
+        "every sound mode must look different on the menu"
+    )

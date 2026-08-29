@@ -67,12 +67,14 @@ class PlatformSession:
         levels: Sequence[Level] = LEVELS,
         music: "chiptune.Player | None" = None,
         sound: Sound = Sound.MUSIC,
+        sound_saver: Callable[[Sound], None] | None = None,
     ) -> None:
         self.levels = tuple(levels)
         # A player with nowhere to send notes is silent and harmless,
         # which is what every machine without a panel gets.
         self.music = music if music is not None else chiptune.Player()
         self.sound = sound
+        self._sound_saver = sound_saver
         self._jumps_seen = 0
         self._fist_was_out = False
         self.progress = progress if progress is not None else Progress()
@@ -140,6 +142,14 @@ class PlatformSession:
         self._held.discard(GAME_KEYS.get(key, key))
 
     def _menu_key(self, key: str) -> None:
+        # Left/Right cycle the sound setting -- the menu has no room for
+        # a fourth word, so the corner bar is the whole display of it.
+        if key in (LEFT, RIGHT):
+            order = list(Sound)
+            step = 1 if key == RIGHT else -1
+            here = order.index(self.sound)
+            self.set_sound(order[(here + step) % len(order)])
+            return
         if key == UP:
             self.menu_entry = max(0, self.menu_entry - 1)
         elif key == DOWN:
@@ -217,6 +227,8 @@ class PlatformSession:
     def set_sound(self, mode: Sound) -> None:
         """Switch between music, event sounds, and silence, immediately."""
         self.sound = mode
+        if self._sound_saver is not None:
+            self._sound_saver(mode)
         self._update_music()
 
     def _update_music(self) -> None:
@@ -320,7 +332,7 @@ class PlatformSession:
 
     def framebuffer(self) -> bytes:
         if self.screen is Screen.MENU:
-            return render.draw_menu(self.menu_entry, self.phase)
+            return render.draw_menu(self.menu_entry, self.phase, sound=self.sound.value)
         if self.screen is Screen.PICKER:
             return render.draw_picker(
                 self.index, self.finished_indexes(), len(self.levels), self.phase
@@ -346,7 +358,10 @@ class PlatformSession:
 
     def status_text(self) -> str:
         if self.screen is Screen.MENU:
-            return "menu  ·  Up/Down to choose, Enter to pick"
+            return (
+                "menu  ·  Up/Down to choose, Enter to pick  ·  "
+                f"Left/Right: sound ({self.sound.value})"
+            )
         if self.screen is Screen.PICKER:
             return (
                 f"choose a level  ·  {title(self.index)}  ·  "
