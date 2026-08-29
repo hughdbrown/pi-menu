@@ -369,68 +369,10 @@ FANFARE = Tune(
     loop=False,
 )
 
-#: Option three. Bouncing and syncopated, wider leaps than FIELD, and a
-#: bass that walks instead of pumping.
-SKYWAYS = Tune(
-    "skyways",
-    lead=(
-        "g5 . . e5 . g5 . c6 . g5 . e5 g5 . . . "
-        "a5 . . f5 . a5 . d6 . a5 . f5 a5 . . . "
-        "b5 . . g5 . b5 . d6 . c6 . b5 g5 . . . "
-        "c6 . g5 . e5 . g5 . c5 . e5 . c5 . . . "
-    ),
-    bass=(
-        "c3 . d3 . e3 . g3 . a3 . g3 . e3 . d3 . "
-        "d3 . e3 . f3 . a3 . b3 . a3 . f3 . e3 . "
-        "g2 . a2 . b2 . d3 . g3 . d3 . b2 . a2 . "
-        "c3 . e3 . g3 . e3 . c3 . g2 . c3 . . . "
-    ),
-    drum=("c2 . . g3 . . c2 . c2 . . g3 . g3 . . " * 4),
-    ticks_per_step=3,
-)
-
-#: Option four. Sparse and minor, long notes, room to breathe -- for
-#: anyone who found the others busy.
-CAVERNS = Tune(
-    "caverns",
-    lead=(
-        "e5 - - . b4 - - . c5 - - . g4 - - . "
-        "a4 - - . e5 - - . d5 - c5 - b4 - - . "
-        "e5 - - . g5 - - . f5 - e5 - d5 - - . "
-        "c5 - b4 - a4 - - - e4 - - - . . . . "
-    ),
-    bass=(
-        "a2 - - - - - - - e2 - - - - - - - "
-        "f2 - - - - - - - e2 - - - - - - - "
-        "a2 - - - - - - - d2 - - - - - - - "
-        "f2 - - - e2 - - - a1 - - - - - - - "
-    ),
-    drum=(". . c2 . . . g3 . " * 8),
-    ticks_per_step=4,
-)
-
-#: Option five. Clockwork: staccato octaves, everything short, nothing
-#: held -- the most video-game of the five.
-CLOCKWORK = Tune(
-    "clockwork",
-    lead=(
-        "c5 c6 . c5 g5 . c5 c6 . g5 e5 . g5 c6 . . "
-        "d5 d6 . d5 a5 . d5 d6 . a5 f5 . a5 d6 . . "
-        "e5 e6 . e5 b5 . e5 e6 . b5 g5 . b5 e6 . . "
-        "f5 d6 . e5 c6 . d5 b5 . g5 . . c6 . . . "
-    ),
-    bass=(
-        "c2 . c3 . c2 . c3 . c2 . c3 . c2 . c3 . "
-        "d2 . d3 . d2 . d3 . d2 . d3 . d2 . d3 . "
-        "e2 . e3 . e2 . e3 . e2 . e3 . e2 . e3 . "
-        "f2 . f3 . g2 . g3 . c2 . c3 . c2 . . . "
-    ),
-    drum=("c2 g3 . c2 g3 . c2 g3 " * 8),
-    ticks_per_step=3,
-)
-
-#: The gameplay tunes to choose from, numbered 1-5 in the settings.
-GAME_TUNES = (FIELD, DEEPER, SKYWAYS, CAVERNS, CLOCKWORK)
+#: The gameplay music. Five were tried; this one -- the second, minor
+#: and a little urgent -- is the one that earned the levels, so the
+#: choice went away rather than sitting in the settings unused.
+GAME_TUNE = DEEPER
 
 
 # ----------------------------------------------------------------------
@@ -449,17 +391,17 @@ FIST_THUD = Tune("fist", lead="", drum="c2 g2", ticks_per_step=2, loop=False)
 
 
 #: What plays behind each level, by index. The finale gets its own.
-def level_tune(index: int, total: int, has_boss: bool, choice: int = 1) -> Tune:
-    """Which tune a level plays. ``choice`` numbers GAME_TUNES from 1."""
+def level_tune(index: int, total: int, has_boss: bool) -> Tune:
+    """Which tune a level plays."""
     if index == total - 1:
         return FINALE
     if has_boss:
         return DEMON
-    return GAME_TUNES[max(1, min(len(GAME_TUNES), choice)) - 1]
+    return GAME_TUNE
 
 
 ALL_TUNES = (
-    TITLE, FIELD, DEEPER, SKYWAYS, CAVERNS, CLOCKWORK,
+    TITLE, FIELD, DEEPER,
     DEMON, FINALE, DEATH, FANFARE,
     COIN_BLIP, JUMP_BLIP, FIST_THUD,
 )

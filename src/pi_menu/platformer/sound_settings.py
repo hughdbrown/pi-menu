@@ -1,8 +1,7 @@
 """The sound settings, kept between runs.
 
-Two loudnesses and a tune choice: how loud the music is, how loud the
-event blips are (either can be zero, which is off), and which of the
-gameplay tunes plays. Like :mod:`.progress`, a file that is missing,
+Two loudnesses: how loud the music is and how loud the event blips are,
+either of which can be zero, which is off. Like :mod:`.progress`, a file that is missing,
 corrupt or unwritable must mean "the defaults" rather than an error --
 refusing to start a game over a preferences file would be absurd.
 
@@ -24,10 +23,6 @@ FILENAME = "platform-sound.json"
 #: Loudness runs 0 (off) to MAX_LEVEL (as loud as the panel goes).
 MAX_LEVEL = 8
 
-#: How many gameplay tunes there are to choose from, numbered from 1.
-TUNE_CHOICES = 5
-
-
 def _clamp(value, lowest: int, highest: int, fallback: int) -> int:
     if not isinstance(value, int) or isinstance(value, bool):
         return fallback
@@ -40,16 +35,12 @@ class SoundSettings:
 
     music: int = 6  #: 0 (silent) to MAX_LEVEL
     effects: int = 6  #: 0 (silent) to MAX_LEVEL
-    tune: int = 1  #: 1 to TUNE_CHOICES, picking the gameplay music
 
     def with_music(self, level: int) -> "SoundSettings":
         return _replace(self, music=_clamp(level, 0, MAX_LEVEL, self.music))
 
     def with_effects(self, level: int) -> "SoundSettings":
         return _replace(self, effects=_clamp(level, 0, MAX_LEVEL, self.effects))
-
-    def with_tune(self, number: int) -> "SoundSettings":
-        return _replace(self, tune=_clamp(number, 1, TUNE_CHOICES, self.tune))
 
 
 DEFAULTS = SoundSettings()
@@ -87,7 +78,6 @@ def load(path: Path | None = None) -> SoundSettings:
     return (
         DEFAULTS.with_music(raw.get("music", DEFAULTS.music))
         .with_effects(raw.get("effects", DEFAULTS.effects))
-        .with_tune(raw.get("tune", DEFAULTS.tune))
     )
 
 
@@ -98,11 +88,7 @@ def save(settings: SoundSettings, path: Path | None = None) -> None:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(
             json.dumps(
-                {
-                    "music": settings.music,
-                    "effects": settings.effects,
-                    "tune": settings.tune,
-                }
+                {"music": settings.music, "effects": settings.effects}
             )
             + "\n",
             encoding="utf-8",

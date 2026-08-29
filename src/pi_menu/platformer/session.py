@@ -42,13 +42,13 @@ GAME_KEYS = {LEFT: physics.LEFT, RIGHT: physics.RIGHT, UP: physics.JUMP}
 
 PLAY_ENTRY = 0
 PICKER_ENTRY = 1
-SETTINGS_ENTRY = 2
+AUDIO_ENTRY = 2
 MENU_ENTRIES = 3
 
-#: The rows of the settings screen, top to bottom.
+#: The rows of the audio screen, top to bottom.
 SETTINGS_MUSIC = 0
 SETTINGS_FX = 1
-SETTINGS_TUNE = 2
+SETTINGS_ROWS = 2
 
 #: How long a death or a win holds the screen before moving on.
 FLASH_TICKS = 8
@@ -152,10 +152,9 @@ class PlatformSession:
         self._held.discard(GAME_KEYS.get(key, key))
 
     def _menu_key(self, key: str) -> None:
-        # The icons run left to right, so Left/Right choose too.
-        if key in (UP, LEFT):
+        if key == UP:
             self.menu_entry = max(0, self.menu_entry - 1)
-        elif key in (DOWN, RIGHT):
+        elif key == DOWN:
             self.menu_entry = min(MENU_ENTRIES - 1, self.menu_entry + 1)
         elif key == SELECT:
             if self.menu_entry == PLAY_ENTRY:
@@ -170,15 +169,13 @@ class PlatformSession:
         if key == UP:
             self._settings_row = max(0, self._settings_row - 1)
         elif key == DOWN:
-            self._settings_row = min(2, self._settings_row + 1)
+            self._settings_row = min(SETTINGS_ROWS - 1, self._settings_row + 1)
         elif key in (LEFT, RIGHT):
             step = 1 if key == RIGHT else -1
             if self._settings_row == SETTINGS_MUSIC:
                 changed = self.settings.with_music(self.settings.music + step)
-            elif self._settings_row == SETTINGS_FX:
-                changed = self.settings.with_effects(self.settings.effects + step)
             else:
-                changed = self.settings.with_tune(self.settings.tune + step)
+                changed = self.settings.with_effects(self.settings.effects + step)
             self.update_settings(changed)
         elif key in (SELECT, BACK):
             self.screen = Screen.MENU
@@ -301,10 +298,7 @@ class PlatformSession:
             return chiptune.FANFARE
         if self.screen is Screen.PLAY:
             return chiptune.level_tune(
-                self.index,
-                len(self.levels),
-                self.levels[self.index].boss is not None,
-                choice=self.settings.tune,
+                self.index, len(self.levels), self.levels[self.index].boss is not None
             )
         return chiptune.TITLE
 
@@ -353,11 +347,7 @@ class PlatformSession:
             return render.draw_menu(self.menu_entry, self.phase)
         if self.screen is Screen.SETTINGS:
             return render.draw_settings(
-                self.settings.music,
-                self.settings.effects,
-                self.settings.tune,
-                self._settings_row,
-                self.phase,
+                self.settings.music, self.settings.effects, self._settings_row, self.phase
             )
         if self.screen is Screen.PICKER:
             return render.draw_picker(
@@ -384,14 +374,13 @@ class PlatformSession:
 
     def status_text(self) -> str:
         if self.screen is Screen.MENU:
-            return "menu  ·  arrows choose: play, levels, settings  ·  Enter picks"
+            return "menu  ·  Up/Down chooses: PLAY, LVLS, AUDIO  ·  Enter picks"
         if self.screen is Screen.SETTINGS:
-            row = ("music", "effects", "tune")[self._settings_row]
+            row = ("music", "effects")[self._settings_row]
             return (
-                f"settings  ·  {row}  ·  Left/Right adjusts, Esc goes back  ·  "
+                f"audio  ·  {row}  ·  Left/Right adjusts, Esc goes back  ·  "
                 f"music {self.settings.music}/{MAX_LEVEL}, "
-                f"effects {self.settings.effects}/{MAX_LEVEL}, "
-                f"tune {self.settings.tune}"
+                f"effects {self.settings.effects}/{MAX_LEVEL}"
             )
         if self.screen is Screen.PICKER:
             return (

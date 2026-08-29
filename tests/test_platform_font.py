@@ -20,9 +20,15 @@ def test_every_glyph_is_four_rows_of_a_constant_width():
         assert len(set(len(row) for row in rows)) == 1, character
 
 
-def test_no_glyph_is_narrower_than_two_or_wider_than_three():
+def test_no_glyph_is_wider_than_three_or_narrower_than_it_must_be():
+    """Three is the ceiling; two is the floor, except for I.
+
+    A letter made of one stroke has one column and no crossbar to lose,
+    which is what buys AUDIO its sixteenth pixel.
+    """
     for character in font.GLYPHS:
-        assert 2 <= font.width(character) <= 3, character
+        floor = 1 if character == "I" else 2
+        assert floor <= font.width(character) <= 3, character
 
 
 def test_every_glyph_uses_only_ink_and_space():
@@ -30,7 +36,7 @@ def test_every_glyph_uses_only_ink_and_space():
         assert set("".join(rows)) <= {font.INK, font.SPACE}, character
 
 
-@pytest.mark.parametrize("word", ["PLAY", "LVLS", "AUTO"])
+@pytest.mark.parametrize("word", ["PLAY", "LVLS", "AUDIO"])
 def test_the_menu_words_can_be_written(word):
     assert all(character in font.GLYPHS for character in word)
 

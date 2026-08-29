@@ -17,7 +17,7 @@ from pi_menu.platformer.levels import LEVELS
 from pi_menu.platformer.progress import Progress
 from pi_menu.platformer.sound_settings import DEFAULTS
 from pi_menu.platformer.session import (
-    SETTINGS_ENTRY,
+    AUDIO_ENTRY,
     BACK,
     DOWN,
     FLASH_TICKS,
@@ -120,7 +120,7 @@ def test_the_menu_selection_does_not_wrap_past_the_ends(session):
 
     for _ in range(4):
         game.press(DOWN)
-    assert game.menu_entry == SETTINGS_ENTRY
+    assert game.menu_entry == AUDIO_ENTRY
 
 
 def test_choosing_play_starts_the_level(session):
@@ -756,10 +756,10 @@ def _settings_session(tmp_path, **kwargs):
     return game, saved
 
 
-def test_the_third_menu_entry_opens_the_settings(tmp_path):
+def test_the_third_menu_entry_opens_the_audio_screen(tmp_path):
     game, _ = _settings_session(tmp_path)
-    game.press(RIGHT)
-    game.press(RIGHT)
+    game.press(DOWN)
+    game.press(DOWN)
 
     game.press(SELECT)
 
@@ -767,10 +767,10 @@ def test_the_third_menu_entry_opens_the_settings(tmp_path):
 
 
 def test_left_and_right_change_the_music_loudness(tmp_path):
-    game, saved = _settings_session(tmp_path, music=4, effects=4, tune=1)
-    game.press(RIGHT)
-    game.press(RIGHT)
-    game.press(SELECT)  # into settings, on the music row
+    game, saved = _settings_session(tmp_path, music=4, effects=4)
+    game.press(DOWN)
+    game.press(DOWN)
+    game.press(SELECT)  # into the audio screen, on the music row
 
     game.press(RIGHT)
     assert game.settings.music == 5
@@ -783,7 +783,7 @@ def test_left_and_right_change_the_music_loudness(tmp_path):
 def test_the_loudness_stops_at_off_and_at_max(tmp_path):
     from pi_menu.platformer.sound_settings import MAX_LEVEL
 
-    game, _ = _settings_session(tmp_path, music=1, effects=4, tune=1)
+    game, _ = _settings_session(tmp_path, music=1, effects=4)
     game.screen = Screen.SETTINGS
 
     for _ in range(5):
@@ -795,17 +795,14 @@ def test_the_loudness_stops_at_off_and_at_max(tmp_path):
     assert game.settings.music == MAX_LEVEL
 
 
-def test_down_moves_to_the_effects_row_and_then_the_tune(tmp_path):
-    game, _ = _settings_session(tmp_path, music=4, effects=4, tune=1)
+def test_down_moves_to_the_effects_row(tmp_path):
+    game, _ = _settings_session(tmp_path, music=4, effects=4)
     game.screen = Screen.SETTINGS
 
     game.press(DOWN)
     game.press(RIGHT)
-    assert game.settings.effects == 5
 
-    game.press(DOWN)
-    game.press(RIGHT)
-    assert game.settings.tune == 2
+    assert game.settings.effects == 5
 
 
 def test_escape_returns_to_the_menu(tmp_path):
@@ -818,7 +815,7 @@ def test_escape_returns_to_the_menu(tmp_path):
 
 
 def test_silent_music_plays_no_tune(tmp_path):
-    game, _ = _settings_session(tmp_path, music=0, effects=4, tune=1)
+    game, _ = _settings_session(tmp_path, music=0, effects=4)
 
     assert game.music.tune is None
 
@@ -829,7 +826,7 @@ def test_silent_music_plays_no_tune(tmp_path):
 
 
 def test_turning_the_music_up_starts_it(tmp_path):
-    game, _ = _settings_session(tmp_path, music=0, effects=4, tune=1)
+    game, _ = _settings_session(tmp_path, music=0, effects=4)
     game.screen = Screen.SETTINGS
 
     game.press(RIGHT)
@@ -837,23 +834,14 @@ def test_turning_the_music_up_starts_it(tmp_path):
     assert game.music.tune is not None
 
 
-def test_the_chosen_tune_is_what_a_level_plays(tmp_path):
-    from pi_menu.music import GAME_TUNES
-
-    game, _ = _settings_session(tmp_path, music=6, effects=6, tune=3)
-    game.press(SELECT)
-
-    assert game.music.tune is GAME_TUNES[2]
-
-
-def test_each_settings_row_looks_different(tmp_path):
+def test_each_audio_row_looks_different(tmp_path):
     game, _ = _settings_session(tmp_path)
     game.screen = Screen.SETTINGS
 
     frames = set()
-    for _ in range(3):
+    for _ in range(2):
         game.push()
         frames.add(game.framebuffer())
         game.press(DOWN)
 
-    assert len(frames) == 3, "the marked row must be visible"
+    assert len(frames) == 2, "the marked row must be visible"

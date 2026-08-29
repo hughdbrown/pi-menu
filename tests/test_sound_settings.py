@@ -1,5 +1,5 @@
-"""The sound settings file: two loudnesses and a tune, none of which may
-break the game when the file is missing, corrupt or from an older version.
+"""The sound settings file: two loudnesses, neither of which may break
+the game when the file is missing, corrupt or from an older version.
 """
 
 from __future__ import annotations
@@ -7,7 +7,6 @@ from __future__ import annotations
 from pi_menu.platformer.sound_settings import (
     DEFAULTS,
     MAX_LEVEL,
-    TUNE_CHOICES,
     SoundSettings,
     load,
     save,
@@ -16,7 +15,7 @@ from pi_menu.platformer.sound_settings import (
 
 def test_the_choices_survive_a_round_trip(tmp_path):
     path = tmp_path / "sound.json"
-    settings = SoundSettings(music=2, effects=7, tune=4)
+    settings = SoundSettings(music=2, effects=7)
 
     save(settings, path)
 
@@ -35,19 +34,18 @@ def test_a_corrupt_file_means_the_defaults(tmp_path):
 
 def test_nonsense_values_fall_back_to_the_defaults(tmp_path):
     path = tmp_path / "sound.json"
-    path.write_text('{"music": "loud", "effects": null, "tune": []}', encoding="utf-8")
+    path.write_text('{"music": "loud", "effects": null}', encoding="utf-8")
     assert load(path) == DEFAULTS
 
 
 def test_loudness_is_clamped_to_the_scale(tmp_path):
     path = tmp_path / "sound.json"
-    path.write_text('{"music": 99, "effects": -5, "tune": 99}', encoding="utf-8")
+    path.write_text('{"music": 99, "effects": -5}', encoding="utf-8")
 
     settings = load(path)
 
     assert settings.music == MAX_LEVEL
     assert settings.effects == 0
-    assert settings.tune == TUNE_CHOICES
 
 
 def test_an_old_one_word_file_keeps_its_meaning(tmp_path):

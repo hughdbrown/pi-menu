@@ -121,19 +121,13 @@ def test_a_boss_level_gets_the_demon_theme():
     assert level_tune(14, 60, has_boss=True) is DEMON
 
 
-def test_the_chosen_tune_is_what_plays():
-    """The halves used to pick the tune; the settings screen does now."""
-    from pi_menu.music import GAME_TUNES
+def test_ordinary_levels_all_play_the_one_gameplay_tune():
+    """Five were tried; the second is the one that stayed."""
+    from pi_menu.music import DEEPER, GAME_TUNE
 
-    for choice, tune in enumerate(GAME_TUNES, start=1):
-        assert level_tune(0, 60, has_boss=False, choice=choice) is tune
-
-
-def test_an_impossible_choice_still_gives_a_tune():
-    from pi_menu.music import GAME_TUNES
-
-    assert level_tune(0, 60, has_boss=False, choice=99) is GAME_TUNES[-1]
-    assert level_tune(0, 60, has_boss=False, choice=0) is GAME_TUNES[0]
+    assert GAME_TUNE is DEEPER
+    assert level_tune(0, 60, has_boss=False) is GAME_TUNE
+    assert level_tune(40, 60, has_boss=False) is GAME_TUNE
 
 
 # -- the player ----------------------------------------------------------
@@ -350,15 +344,14 @@ def test_effects_have_their_own_loudness(player):
     assert sounded and all(v <= 30 for v in sounded)
 
 
-def test_every_gameplay_tune_is_a_real_tune():
-    from pi_menu.music import GAME_TUNES, Player
+def test_the_gameplay_tune_is_a_real_tune():
+    from pi_menu.music import GAME_TUNE, Player
 
-    assert len(GAME_TUNES) == 5
-    for tune in GAME_TUNES:
-        recorder = Recorder()
-        music = Player(recorder)
-        music.play(tune)
-        for _ in range(120):
-            music.tick()
-        assert recorder.notes, f"{tune.name} made no sound"
-        assert tune.steps >= 32, f"{tune.name} is too short to be a loop"
+    recorder = Recorder()
+    music = Player(recorder)
+    music.play(GAME_TUNE)
+    for _ in range(120):
+        music.tick()
+
+    assert recorder.notes, "the gameplay tune made no sound"
+    assert GAME_TUNE.steps >= 32, "too short to be a loop"

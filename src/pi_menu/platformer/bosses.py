@@ -22,10 +22,13 @@ from dataclasses import dataclass
 #: A fist is three cells wide and two deep.
 FIST_WIDTH = 3
 FIST_HEIGHT = 2
-#: Ticks to fall, to stay buried, and to pull back out.
-FIST_FALL = 12
-FIST_HOLD = 10
-FIST_RISE = 12
+#: Ticks to fall, to stay buried, and to pull back out. Slowed on
+#: 2026-08-29: a fist that takes longer coming down is one you can see
+#: arriving, which is the difference between a fight you read and one
+#: you are simply caught by.
+FIST_FALL = 18
+FIST_HOLD = 12
+FIST_RISE = 16
 FIST_TOTAL = FIST_FALL + FIST_HOLD + FIST_RISE
 
 #: Fists aim at whole even columns. Halving the number of places one can
@@ -108,11 +111,11 @@ IMP = BossKind(
     name="imp",
     hue="ember",
     waves=(
-        Wave(ticks=140, fist_period=70, fireballs=(Fireball(30, 13, -0.30),)),
+        Wave(ticks=182, fist_period=102, fireballs=(Fireball(30, 13, -0.210),)),
         Wave(
-            ticks=160,
-            fist_period=55,
-            fireballs=(Fireball(20, 13, -0.34), Fireball(95, 12, -0.34)),
+            ticks=208,
+            fist_period=80,
+            fireballs=(Fireball(20, 13, -0.238), Fireball(95, 12, -0.238)),
         ),
     ),
 )
@@ -122,10 +125,10 @@ WYRM = BossKind(
     name="wyrm",
     hue="viridian",
     waves=(
-        Wave(ticks=150, fist_period=60, fireballs=_volley(30, (13, 10), -0.32)),
-        Wave(ticks=170, fist_period=50, fireballs=_volley(25, (13, 11), -0.38)
-             + _volley(100, (12, 9), -0.38)),
-        Wave(ticks=170, fist_period=45, fireballs=_volley(20, (13, 11, 9), -0.40)),
+        Wave(ticks=195, fist_period=87, fireballs=_volley(30, (13, 10), -0.224)),
+        Wave(ticks=221, fist_period=72, fireballs=_volley(25, (13, 11), -0.266)
+             + _volley(100, (12, 9), -0.266)),
+        Wave(ticks=221, fist_period=65, fireballs=_volley(20, (13, 11, 9), -0.280)),
     ),
 )
 
@@ -135,17 +138,17 @@ MOLOCH = BossKind(
     name="moloch",
     hue="brass",
     waves=(
-        Wave(ticks=150, fist_period=50, fireballs=_volley(25, (13, 12), -0.22)),
+        Wave(ticks=195, fist_period=72, fireballs=_volley(25, (13, 12), -0.154)),
         Wave(
-            ticks=180,
-            fist_period=42,
-            fireballs=_volley(20, (13, 11), -0.24) + _volley(110, (12, 10), -0.30),
+            ticks=234,
+            fist_period=61,
+            fireballs=_volley(20, (13, 11), -0.168) + _volley(110, (12, 10), -0.210),
         ),
         Wave(
-            ticks=190,
-            fist_period=38,
-            fireballs=_volley(15, (13, 12, 10), -0.26)
-            + _volley(110, (13, 11), -0.36),
+            ticks=247,
+            fist_period=55,
+            fireballs=_volley(15, (13, 12, 10), -0.182)
+            + _volley(110, (13, 11), -0.252),
         ),
     ),
 )
@@ -155,22 +158,22 @@ BALROG = BossKind(
     name="balrog",
     hue="crimson",
     waves=(
-        Wave(ticks=150, fist_period=48, fireballs=_volley(25, (13, 11), -0.34)),
+        Wave(ticks=195, fist_period=70, fireballs=_volley(25, (13, 11), -0.238)),
         Wave(
-            ticks=170,
-            fist_period=42,
-            fireballs=_volley(20, (13, 12, 10), -0.36) + _volley(105, (13, 11), -0.28),
+            ticks=221,
+            fist_period=61,
+            fireballs=_volley(20, (13, 12, 10), -0.252) + _volley(105, (13, 11), -0.196),
         ),
         Wave(
-            ticks=180,
-            fist_period=36,
-            fireballs=_volley(15, (13, 11, 9), -0.40) + _volley(100, (12, 10), -0.30),
+            ticks=234,
+            fist_period=52,
+            fireballs=_volley(15, (13, 11, 9), -0.280) + _volley(100, (12, 10), -0.210),
         ),
         Wave(
-            ticks=190,
-            fist_period=32,
-            fireballs=_volley(12, (13, 12, 11), -0.42)
-            + _volley(90, (13, 11, 9), -0.34),
+            ticks=247,
+            fist_period=46,
+            fireballs=_volley(12, (13, 12, 11), -0.294)
+            + _volley(90, (13, 11, 9), -0.238),
         ),
     ),
 )

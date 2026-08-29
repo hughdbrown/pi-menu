@@ -26,6 +26,12 @@ SPACE = "."
 
 GLYPHS: dict[str, tuple[str, ...]] = {
     "A": (".#.", "#.#", "###", "#.#"),
+    # Two columns, because AUDIO is exactly one pixel too wide with a
+    # three-column D and the panel has no seventeenth column. The bowl
+    # closes at top and bottom, which is what separates it from O.
+    "D": ("##", "#.", "#.", "##"),
+    "E": ("###", "##.", "#..", "###"),
+    "I": ("#", "#", "#", "#"),
     "L": ("#.", "#.", "#.", "##"),
     "P": ("##.", "#.#", "##.", "#.."),
     "S": (".##", "##.", "..#", "##."),
