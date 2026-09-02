@@ -1,0 +1,1380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>MicroCraft — 16×16</title>
+<style>
+  :root {
+    --bg: #0d0f14;
+    --panel: #16191f;
+    --line: #2a2e37;
+    --text: #cfd6e0;
+    --accent: #7fb069;
+    --accent2: #d97757;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    overscroll-behavior: none;
+  }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    min-height: 100dvh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Courier New', monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 16px 12px;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  h1 {
+    font-size: 13px;
+    letter-spacing: 2px;
+    font-weight: normal;
+    color: var(--accent);
+    margin: 0;
+    text-align: center;
+  }
+  h1 span { color: var(--accent2); }
+  .stage {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    max-width: 384px;
+  }
+  canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    width: 100%;
+    max-width: 384px;
+    aspect-ratio: 1 / 1;
+    background: #5c94fc;
+    border: 1px solid var(--line);
+    touch-action: none;
+  }
+  .hud {
+    display: flex;
+    gap: 10px;
+    font-size: 11px;
+    color: var(--text);
+    opacity: 0.85;
+  }
+  .hud b { color: var(--accent); }
+  .invToggle {
+    color: var(--accent2);
+    cursor: pointer;
+    text-decoration: underline;
+    touch-action: manipulation;
+  }
+  .help {
+    font-size: 10px;
+    line-height: 1.6;
+    text-align: center;
+    color: var(--text);
+    opacity: 0.6;
+    max-width: 340px;
+  }
+  .help b { color: var(--text); opacity: 1; }
+  .help.desktop-only { display: block; }
+  .help.mobile-only { display: none; }
+
+  /* ---- touch controls ---- */
+  .touch-controls {
+    display: none;
+    width: 100%;
+    max-width: 384px;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+  }
+  .dpad {
+    display: flex;
+    gap: 8px;
+  }
+  .tbtn {
+    width: 56px;
+    height: 56px;
+    border-radius: 10px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--accent);
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .tbtn:active,
+  .tbtn.pressed {
+    background: var(--line);
+    border-color: var(--accent);
+  }
+  .tbtn.jump { width: 68px; font-size: 12px; letter-spacing: 1px; }
+  .tbtn.mode {
+    width: 68px;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+  }
+  .tbtn.mode.place { color: var(--accent2); border-color: var(--accent2); }
+
+  @media (hover: none) and (pointer: coarse) {
+    .touch-controls { display: flex; }
+    .help.desktop-only { display: none; }
+    .help.mobile-only { display: block; }
+  }
+</style>
+</head>
+<body>
+
+<h1>MICRO<span>CRAFT</span> — 16×16px world</h1>
+
+<div class="stage">
+  <canvas id="game" width="16" height="16"></canvas>
+  <div class="hud">
+    <span>❤ <b id="hp">10</b></span>
+    <span>block: <b id="selName">dirt x16</b></span>
+    <span>layer: <b id="layerName">front</b></span>
+    <span id="invToggle" class="invToggle">[inventory]</span>
+  </div>
+
+  <div class="touch-controls">
+    <div class="dpad">
+      <div class="tbtn" id="btnLeft">◀</div>
+      <div class="tbtn" id="btnRight">▶</div>
+    </div>
+    <div class="tbtn mode" id="btnMode">MINE</div>
+    <div class="tbtn mode" id="btnLayer">FRONT</div>
+    <div class="tbtn jump" id="btnJump">JUMP</div>
+  </div>
+
+  <div class="help desktop-only">
+    <b>W/A/S/D</b> move · <b>Space</b> jump · <b>L</b> toggle mining/placing between front and background layers<br>
+    <b>Arrow keys</b> move the white pixel cursor · <b>Enter</b> place/interact · <b>Backspace</b> break a block<br>
+    <b>1-8</b> select hotbar slot · <b>E</b> or <b>[inventory]</b> to open/close your inventory
+  </div>
+  <div class="help mobile-only">
+    Use the <b>◀ ▶</b> buttons to move and <b>JUMP</b> to jump<br>
+    Tap the world to <b>mine</b> · toggle <b>MINE/PLACE</b> then tap to build<br>
+    Tap <b>FRONT/BACK</b> to switch which layer you're mining or placing on<br>
+    Tap <b>[inventory]</b> to manage your items
+  </div>
+</div>
+
+<script>
+(() => {
+  const VIEW = 16;          // logical screen pixels (16x16)
+  const BLOCK = 2;          // each block is 2x2 px
+  const COLS = VIEW / BLOCK; // 8 blocks wide on screen
+  const ROWS = VIEW / BLOCK; // 8 blocks tall on screen
+
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+
+  // ---- world ----
+  const WORLD_W = 200;
+  const WORLD_H = 28;
+
+  // ---- block asset sheet (16x16px, 2x2 tiles) ----
+  // row0 (y=0): grass, dirt, stone, log, leaves, coal ore, iron ore, copper ore
+  // row1 (y=2): lava, water, wood planks, crafting table
+  // row2 (y=4): lava flow - down, taper1, taper2, taper3 (asset faces right; mirrored for left-flow)
+  // row3 (y=6): water flow - down, taper1, taper2, taper3 (asset faces right; mirrored for left-flow)
+  const SKY = 0, GRASS = 1, DIRT = 2, STONE = 3, WOOD = 4, LEAF = 5,
+        COAL_ORE = 6, IRON_ORE = 7, COPPER_ORE = 8,
+        LAVA = 9, WATER = 10, WOOD_PLANKS = 11, CRAFTING_TABLE = 12,
+        LAVA_FLOW_DOWN = 13, LAVA_FLOW_R1 = 14, LAVA_FLOW_R2 = 15, LAVA_FLOW_R3 = 16,
+        LAVA_FLOW_L1 = 17, LAVA_FLOW_L2 = 18, LAVA_FLOW_L3 = 19,
+        WATER_FLOW_DOWN = 20, WATER_FLOW_R1 = 21, WATER_FLOW_R2 = 22, WATER_FLOW_R3 = 23,
+        WATER_FLOW_L1 = 24, WATER_FLOW_L2 = 25, WATER_FLOW_L3 = 26;
+  const SHEET_POS = {
+    [GRASS]: [0, 0], [DIRT]: [2, 0], [STONE]: [4, 0], [WOOD]: [6, 0], [LEAF]: [8, 0],
+    [COAL_ORE]: [10, 0], [IRON_ORE]: [12, 0], [COPPER_ORE]: [14, 0],
+    [LAVA]: [0, 2], [WATER]: [2, 2], [WOOD_PLANKS]: [4, 2], [CRAFTING_TABLE]: [6, 2],
+    [LAVA_FLOW_DOWN]: [0, 4], [LAVA_FLOW_R1]: [2, 4], [LAVA_FLOW_R2]: [4, 4], [LAVA_FLOW_R3]: [6, 4],
+    [LAVA_FLOW_L1]: [2, 4], [LAVA_FLOW_L2]: [4, 4], [LAVA_FLOW_L3]: [6, 4], // mirrored at draw time
+    [WATER_FLOW_DOWN]: [0, 6], [WATER_FLOW_R1]: [2, 6], [WATER_FLOW_R2]: [4, 6], [WATER_FLOW_R3]: [6, 6],
+    [WATER_FLOW_L1]: [2, 6], [WATER_FLOW_L2]: [4, 6], [WATER_FLOW_L3]: [6, 6], // mirrored at draw time
+  };
+  // tile ids that should be drawn horizontally flipped (their SHEET_POS points at the
+  // right-facing art; flowing left just mirrors that same sprite)
+  const MIRRORED_TILES = new Set([LAVA_FLOW_L1, LAVA_FLOW_L2, LAVA_FLOW_L3, WATER_FLOW_L1, WATER_FLOW_L2, WATER_FLOW_L3]);
+  // ---- item asset sheet (16x16px, 2x2 tiles; not blocks, can't be placed) ----
+  // row0 (y=0): stick, iron sword, copper sword, iron pickaxe, copper pickaxe, iron axe, copper axe, coal
+  // row1 (y=2): copper, iron
+  const STICK = 100, IRON_SWORD = 101, COPPER_SWORD = 102, IRON_PICKAXE = 103, COPPER_PICKAXE = 104,
+        IRON_AXE = 105, COPPER_AXE = 106, COAL = 107, COPPER = 108, IRON = 109;
+  const ITEM_SHEET_POS = {
+    [STICK]: [0, 0], [IRON_SWORD]: [2, 0], [COPPER_SWORD]: [4, 0], [IRON_PICKAXE]: [6, 0],
+    [COPPER_PICKAXE]: [8, 0], [IRON_AXE]: [10, 0], [COPPER_AXE]: [12, 0], [COAL]: [14, 0],
+    [COPPER]: [0, 2], [IRON]: [2, 2],
+  };
+  const ITEM_NAMES = {
+    [STICK]: 'stick', [IRON_SWORD]: 'iron sword', [COPPER_SWORD]: 'copper sword',
+    [IRON_PICKAXE]: 'iron pickaxe', [COPPER_PICKAXE]: 'copper pickaxe',
+    [IRON_AXE]: 'iron axe', [COPPER_AXE]: 'copper axe', [COAL]: 'coal',
+    [COPPER]: 'copper', [IRON]: 'iron',
+  };
+  // ids that are items, not blocks: they live in the same inventory/hotbar/craft
+  // slots as blocks, but can never be placed into the world
+  const ITEMS = new Set(Object.keys(ITEM_SHEET_POS).map(Number));
+
+  const NAMES = {
+    [GRASS]: 'grass', [DIRT]: 'dirt', [STONE]: 'stone', [WOOD]: 'log', [LEAF]: 'leaves',
+    [COAL_ORE]: 'coal ore', [IRON_ORE]: 'iron ore', [COPPER_ORE]: 'copper ore',
+    [LAVA]: 'lava', [WATER]: 'water', [WOOD_PLANKS]: 'wood planks', [CRAFTING_TABLE]: 'crafting table',
+    ...ITEM_NAMES,
+  };
+  // fluids: not solid (you swim through them), not mineable, not a valid placement target
+  const FLUIDS = new Set([
+    LAVA, WATER,
+    LAVA_FLOW_DOWN, LAVA_FLOW_R1, LAVA_FLOW_R2, LAVA_FLOW_R3, LAVA_FLOW_L1, LAVA_FLOW_L2, LAVA_FLOW_L3,
+    WATER_FLOW_DOWN, WATER_FLOW_R1, WATER_FLOW_R2, WATER_FLOW_R3, WATER_FLOW_L1, WATER_FLOW_L2, WATER_FLOW_L3,
+  ]);
+  // per-tile fluid metadata used by the flow simulation: which fluid it belongs to,
+  // whether it's an infinite source, and its taper level (0 = source/falling, 1-3 = tapering)
+  const FLUID_META = {
+    [LAVA]: { fluid: 'lava', isSource: true, level: 0, dir: null },
+    [WATER]: { fluid: 'water', isSource: true, level: 0, dir: null },
+    [LAVA_FLOW_DOWN]: { fluid: 'lava', isSource: false, level: 0, dir: 'D' },
+    [LAVA_FLOW_R1]: { fluid: 'lava', isSource: false, level: 1, dir: 'R' },
+    [LAVA_FLOW_R2]: { fluid: 'lava', isSource: false, level: 2, dir: 'R' },
+    [LAVA_FLOW_R3]: { fluid: 'lava', isSource: false, level: 3, dir: 'R' },
+    [LAVA_FLOW_L1]: { fluid: 'lava', isSource: false, level: 1, dir: 'L' },
+    [LAVA_FLOW_L2]: { fluid: 'lava', isSource: false, level: 2, dir: 'L' },
+    [LAVA_FLOW_L3]: { fluid: 'lava', isSource: false, level: 3, dir: 'L' },
+    [WATER_FLOW_DOWN]: { fluid: 'water', isSource: false, level: 0, dir: 'D' },
+    [WATER_FLOW_R1]: { fluid: 'water', isSource: false, level: 1, dir: 'R' },
+    [WATER_FLOW_R2]: { fluid: 'water', isSource: false, level: 2, dir: 'R' },
+    [WATER_FLOW_R3]: { fluid: 'water', isSource: false, level: 3, dir: 'R' },
+    [WATER_FLOW_L1]: { fluid: 'water', isSource: false, level: 1, dir: 'L' },
+    [WATER_FLOW_L2]: { fluid: 'water', isSource: false, level: 2, dir: 'L' },
+    [WATER_FLOW_L3]: { fluid: 'water', isSource: false, level: 3, dir: 'L' },
+  };
+  // builds the tile id for a given fluid + level + direction (level 0 is always 'D')
+  function flowTileFor(fluid, level, dir) {
+    if (level === 0) return fluid === 'lava' ? LAVA_FLOW_DOWN : WATER_FLOW_DOWN;
+    const table = fluid === 'lava'
+      ? { L: [null, LAVA_FLOW_L1, LAVA_FLOW_L2, LAVA_FLOW_L3], R: [null, LAVA_FLOW_R1, LAVA_FLOW_R2, LAVA_FLOW_R3] }
+      : { L: [null, WATER_FLOW_L1, WATER_FLOW_L2, WATER_FLOW_L3], R: [null, WATER_FLOW_R1, WATER_FLOW_R2, WATER_FLOW_R3] };
+    return table[dir][level];
+  }
+  const SKY_COLOR = '#5c94fc';
+
+  const itemSheet = new Image();
+  let itemSheetReady = false;
+  itemSheet.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAfUlEQVR4nO3LoQ1CMQCE4V8wAL5BYZuaJ5jgOTQWzQZVrIJiA7oBC9wCL2nSBRDVh0EB5vl+5nK5HACX494AkgxQc7Qkl1Jcc/T9tPvpACklM0/BwN+U5HkKrjn6e08pOYRgao7242pJ7r2blTbP5QXLje35QGtt7X8Yho83MXVH5IY74pwAAAAASUVORK5CYII=';
+  itemSheet.onload = () => {
+    itemSheetReady = true;
+    const tmp = document.createElement('canvas');
+    tmp.width = 16; tmp.height = 16;
+    const tctx = tmp.getContext('2d');
+    tctx.drawImage(itemSheet, 0, 0);
+    Object.keys(ITEM_SHEET_POS).forEach(k => {
+      const [x0, y0] = ITEM_SHEET_POS[k];
+      const a = tctx.getImageData(x0, y0, 1, 1).data;
+      const b = tctx.getImageData(x0 + 1, y0, 1, 1).data;
+      // average only the opaque pixels (pitch black in the source art is
+      // transparent), falling back to grey if the whole 2x2 icon is empty
+      const samples = [a, b].filter(p => p[3] > 0);
+      AVG_COLOR[k] = samples.length
+        ? [
+            Math.round(samples.reduce((s, p) => s + p[0], 0) / samples.length),
+            Math.round(samples.reduce((s, p) => s + p[1], 0) / samples.length),
+            Math.round(samples.reduce((s, p) => s + p[2], 0) / samples.length),
+          ]
+        : [128, 128, 128];
+    });
+  };
+
+  const sheet = new Image();
+  let sheetReady = false;
+  sheet.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAA/UlEQVR4nO2QsUrDUBRAz5XAa6GJBlx1qYIgDyGkWxYtiG4ufoW/4A+4u4i7III4OTYUOggtb3Syg4PaDlpMQhVtfU6mCBLprGe50z33cGVlb8mWZhVy1kMphb+whlKK2+smfqVMa/UeHKj3tjHGEAQBUTemVV1nd97gzDWHDJJHfK/MIHnBG4/JsowcB3gGYwxaa6JuTLwYUS8ZTh40YnewhCAHDRCXq6NDRu8jTs/bvL59cHx5IxQwQwh0AHHBptz1E/pPQ4LaMlubumgXYFJAB+SCwms/4eQFIVgmMkKQ/d+FgtuwX/mkG1MXCF7bYtP8B99mUpta+M/f5BNULFf8cD/+hgAAAABJRU5ErkJggg==';
+
+  // average color of each block's top-row pixels (for the hotbar) —
+  // sampled from the sheet at each block's own [x,y] position
+  const AVG_COLOR = {};
+  sheet.onload = () => {
+    sheetReady = true;
+    const tmp = document.createElement('canvas');
+    tmp.width = 16; tmp.height = 16;
+    const tctx = tmp.getContext('2d');
+    tctx.drawImage(sheet, 0, 0);
+    Object.keys(SHEET_POS).forEach(k => {
+      const [x0, y0] = SHEET_POS[k];
+      const a = tctx.getImageData(x0, y0, 1, 1).data;
+      const b = tctx.getImageData(x0 + 1, y0, 1, 1).data;
+      AVG_COLOR[k] = [
+        Math.round((a[0] + b[0]) / 2),
+        Math.round((a[1] + b[1]) / 2),
+        Math.round((a[2] + b[2]) / 2),
+      ];
+    });
+  };
+
+  // ---- UI asset sheet (16x16px, three 2x2 tiles at x=0 empty-slot, x=2 exit, x=4 bg) ----
+  const UI_EMPTY_X = 0, UI_EXIT_X = 2, UI_BG_X = 4;
+  const uiSheet = new Image();
+  let uiSheetReady = false;
+  let UI_BG_COLOR = '#9c9c9c';
+  uiSheet.onload = () => {
+    uiSheetReady = true;
+    const tmp = document.createElement('canvas');
+    tmp.width = 16; tmp.height = 16;
+    const tctx = tmp.getContext('2d');
+    tctx.drawImage(uiSheet, 0, 0);
+    const d = tctx.getImageData(UI_BG_X, 0, 1, 1).data;
+    UI_BG_COLOR = `rgb(${d[0]},${d[1]},${d[2]})`;
+  };
+  uiSheet.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAEKADAAQAAAABAAAAEAAAAAA0VXHyAAAAUElEQVQ4EWN0cXH5LykpybBo8WKG9QwMDO/mzAGSDAwpKSlgmhDBBFLw/PlzsOZAQqqxyDMCxf5jESdaCOwColVjUThqAAPDaBiMhgEoawAA4oQM0m+1sz0AAAAASUVORK5CYII=';
+
+  // ---- crafting-UI open button (2x2px icon, drawn directly left of the exit
+  // button on the main inventory screen) ----
+  const craftBtnImg = new Image();
+  let craftBtnReady = false;
+  craftBtnImg.onload = () => { craftBtnReady = true; };
+  craftBtnImg.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAAqADAAQAAAABAAAAAgAAAADtGLyqAAAAGElEQVQIHWO0trb+LyAgwMAEIj58+MAAACU4BOQE/fWQAAAAAElFTkSuQmCC';
+
+  // ---- world gen: build one terrain layer from a given height map ----
+  function generateHeights() {
+    const heights = [];
+    let h = 6;
+    for (let x = 0; x < WORLD_W; x++) {
+      h += Math.round((Math.random() - 0.5) * 2);
+      h = Math.max(4, Math.min(8, h));
+      heights.push(h);
+    }
+    return heights;
+  }
+
+  // the background layer's terrain closely follows the front layer's, like the
+  // next slice of a 3D voxel world, but nudged by a block here and there so it
+  // isn't a perfect duplicate
+  function jitterHeights(baseHeights) {
+    return baseHeights.map(h => {
+      const j = Math.random() < 0.35 ? (Math.random() < 0.5 ? -1 : 1) : 0;
+      return Math.max(4, Math.min(8, h + j));
+    });
+  }
+
+  function buildLayer(heights, waterMask) {
+    const layer = Array.from({length: WORLD_H}, () => new Array(WORLD_W).fill(SKY));
+    // decide lake regions up front (flat water level, basin-shaped bed) so trees can avoid them
+    const numLakes = Math.max(3, Math.floor(WORLD_W / 30));
+    const lakes = [];
+    const lakeCols = new Set();
+    for (let L = 0; L < numLakes; L++) {
+      const lakeW = 8 + Math.floor(Math.random() * 14); // 8-21 tiles wide
+      const cx = Math.floor(Math.random() * WORLD_W);
+      const maxDepth = 4 + Math.floor(Math.random() * 5); // 4-8 tiles deep at center
+      const half = Math.floor(lakeW / 2);
+      // flat water level = average ground height across the lake's span, sunk in a little
+      let sumSurf = 0, cnt = 0;
+      for (let dx = -half; dx <= half; dx++) {
+        const x = cx + dx;
+        if (x < 0 || x >= WORLD_W) continue;
+        sumSurf += heights[x]; cnt++;
+        lakeCols.add(x);
+      }
+      const waterLevel = Math.round(sumSurf / cnt) + 1;
+      lakes.push({ cx, half, maxDepth, waterLevel });
+    }
+    let lastTreeEnd = -10; // guards against overlapping canopies
+    for (let x = 0; x < WORLD_W; x++) {
+      const surf = heights[x];
+      for (let y = 0; y < WORLD_H; y++) {
+        if (y === surf) layer[y][x] = GRASS;
+        else if (y > surf && y < surf + 3) layer[y][x] = DIRT;
+        else if (y >= surf + 3) layer[y][x] = STONE;
+      }
+      // occasional tree (never on a body of water, never overlapping another tree)
+      if (x > lastTreeEnd && Math.random() < 0.12 && surf - 6 >= 0) {
+        let canPlant = true;
+        for (let dx = -2; dx <= 2; dx++) {
+          const cx = x + dx;
+          if (cx < 0 || cx >= WORLD_W || lakeCols.has(cx)) { canPlant = false; break; }
+        }
+        if (canPlant) {
+          // canopy tapers to a point at the top; the trunk runs straight up
+          // through its middle, flanked by leaves on the two widest rows
+          const canopyRows = [
+            { dy: -6, dx: [-1, 0, 1] },
+            { dy: -5, dx: [-2, -1, 0, 1, 2] },
+            { dy: -4, dx: [-2, -1, 1, 2] },
+            { dy: -3, dx: [-2, -1, 1, 2] },
+          ];
+          for (const { dy, dx } of canopyRows) {
+            for (const d of dx) layer[surf + dy][x + d] = LEAF;
+          }
+          // trunk: 4 blocks tall, straight up from the ground through the canopy
+          layer[surf - 4][x] = WOOD;
+          layer[surf - 3][x] = WOOD;
+          layer[surf - 2][x] = WOOD;
+          layer[surf - 1][x] = WOOD;
+          lastTreeEnd = x + 2;
+        }
+      }
+    }
+    // carve out real bodies of water: wide, basin-shaped lakes with a flat water surface
+    for (const { cx, half, maxDepth, waterLevel } of lakes) {
+      for (let dx = -half; dx <= half; dx++) {
+        const x = cx + dx;
+        if (x < 0 || x >= WORLD_W) continue;
+        // basin shape: deepest in the middle, tapering to the shore at the edges
+        const edgeFactor = 1 - Math.abs(dx) / (half + 1);
+        const colDepth = Math.max(1, Math.round(maxDepth * edgeFactor));
+        const bedY = Math.min(WORLD_H - 2, waterLevel + colDepth);
+        // carve from whichever is higher (smaller y) - the original ground or the flat water level -
+        // down to the basin floor, so the water surface lines up flat across the whole lake.
+        // bodies of water only ever generate in the front layer; the background layer
+        // just gets the basin carved out as empty air (a cavern behind the lake) so no
+        // water can ever generate there.
+        const topY = Math.min(heights[x], waterLevel);
+        for (let y = topY; y < bedY; y++) {
+          if (y < waterLevel || waterMask) {
+            layer[y][x] = SKY;
+          } else {
+            layer[y][x] = WATER;
+          }
+        }
+        layer[bedY][x] = STONE;
+      }
+    }
+    // sprinkle ore into stone, and lava down in the deeper underground
+    for (let y = 0; y < WORLD_H; y++) {
+      for (let x = 0; x < WORLD_W; x++) {
+        if (layer[y][x] !== STONE) continue;
+        const r = Math.random();
+        if (r < 0.06) layer[y][x] = COAL_ORE;
+        else if (r < 0.10) layer[y][x] = IRON_ORE;
+        else if (r < 0.14) layer[y][x] = COPPER_ORE;
+        else if (y >= WORLD_H - 6 && r < 0.20) layer[y][x] = LAVA;
+      }
+    }
+    return layer;
+  }
+
+  // layer 0 = front (the one shown normally), layer 1 = background
+  const heightsArr = [];
+  heightsArr[0] = generateHeights();
+  heightsArr[1] = jitterHeights(heightsArr[0]);
+  const frontLayer = buildLayer(heightsArr[0], null);
+  const backLayer = buildLayer(heightsArr[1], frontLayer);
+  const layers = [frontLayer, backLayer];
+
+  function blockAtLayer(layer, x, y) {
+    if (y < 0) return SKY;
+    if (y >= WORLD_H) return STONE;
+    if (x < 0 || x >= WORLD_W) return STONE;
+    return layers[layer][y][x];
+  }
+  function blockAt(x, y) { return blockAtLayer(0, x, y); }
+  function solid(t) { return t !== SKY && !FLUIDS.has(t); }
+  function solidAt(x, y) { return solid(blockAt(x, y)); }
+  function fluidAt(x, y) { return FLUIDS.has(blockAt(x, y)); }
+
+  // ---- fluid flow simulation ----
+  // Water/lava spread out from source blocks and from other flowing blocks on both
+  // sides, tapering from level 1 up to level 3 (the last taper asset), and stop
+  // spreading further once they hit level 3 or run into a solid block. Any fluid
+  // block with open space below it also drips straight down into that space. A
+  // flowing (non-source) block that's no longer fed by a source or another flowing
+  // block reverts back to empty air.
+  function simulateFluidsForLayer(layerIdx, fluidName) {
+    const grid = layers[layerIdx];
+    const additions = []; // {x, y, level, dir}
+    const removals = [];  // {x, y}
+
+    for (let y = 0; y < WORLD_H; y++) {
+      for (let x = 0; x < WORLD_W; x++) {
+        const t = grid[y][x];
+        const meta = FLUID_META[t];
+
+        if (meta && meta.fluid === fluidName) {
+          if (meta.isSource) continue; // sources are permanent
+
+          // does this flowing block still have something feeding it?
+          const aboveT = blockAtLayer(layerIdx, x, y - 1);
+          const aboveMeta = FLUID_META[aboveT];
+          if (aboveMeta && aboveMeta.fluid === fluidName) {
+            // fed from directly above -> falling column, always the "down" tile
+            if (meta.dir !== 'D') additions.push({ x, y, level: 0, dir: 'D' });
+            continue;
+          }
+
+          const leftT = blockAtLayer(layerIdx, x - 1, y);
+          const rightT = blockAtLayer(layerIdx, x + 1, y);
+          const leftMeta = FLUID_META[leftT];
+          const rightMeta = FLUID_META[rightT];
+          let bestLevel = Infinity, bestDir = null;
+          if (leftMeta && leftMeta.fluid === fluidName) {
+            const lv = leftMeta.isSource ? 0 : leftMeta.level;
+            if (lv + 1 <= 3 && lv + 1 < bestLevel) { bestLevel = lv + 1; bestDir = 'R'; }
+          }
+          if (rightMeta && rightMeta.fluid === fluidName) {
+            const lv = rightMeta.isSource ? 0 : rightMeta.level;
+            if (lv + 1 <= 3 && lv + 1 < bestLevel) { bestLevel = lv + 1; bestDir = 'L'; }
+          }
+          if (bestLevel > 3) {
+            removals.push({ x, y }); // nothing feeds this tile anymore
+          } else if (bestLevel !== meta.level || bestDir !== meta.dir) {
+            additions.push({ x, y, level: bestLevel, dir: bestDir });
+          }
+        } else if (t === SKY) {
+          // if this empty tile borders 2 or more source blocks of this fluid,
+          // it becomes a new source itself -- this check happens before any flow spreading
+          const nAboveT = blockAtLayer(layerIdx, x, y - 1);
+          const nBelowT = blockAtLayer(layerIdx, x, y + 1);
+          const nLeftT = blockAtLayer(layerIdx, x - 1, y);
+          const nRightT = blockAtLayer(layerIdx, x + 1, y);
+          let sourceNeighbors = 0;
+          for (const nt of [nAboveT, nBelowT, nLeftT, nRightT]) {
+            const nMeta = FLUID_META[nt];
+            if (nMeta && nMeta.fluid === fluidName && nMeta.isSource) sourceNeighbors++;
+          }
+          if (sourceNeighbors >= 2) {
+            additions.push({ x, y, level: 0, dir: null, becomeSource: true });
+            continue;
+          }
+
+          // could fluid spread into this empty tile?
+          const aboveT = blockAtLayer(layerIdx, x, y - 1);
+          const aboveMeta = FLUID_META[aboveT];
+          if (aboveMeta && aboveMeta.fluid === fluidName) {
+            additions.push({ x, y, level: 0, dir: 'D' });
+            continue;
+          }
+          const leftT = blockAtLayer(layerIdx, x - 1, y);
+          const rightT = blockAtLayer(layerIdx, x + 1, y);
+          const leftMeta = FLUID_META[leftT];
+          const rightMeta = FLUID_META[rightT];
+          let bestLevel = Infinity, bestDir = null;
+          if (leftMeta && leftMeta.fluid === fluidName) {
+            const lv = leftMeta.isSource ? 0 : leftMeta.level;
+            if (lv + 1 <= 3 && lv + 1 < bestLevel) { bestLevel = lv + 1; bestDir = 'R'; }
+          }
+          if (rightMeta && rightMeta.fluid === fluidName) {
+            const lv = rightMeta.isSource ? 0 : rightMeta.level;
+            if (lv + 1 <= 3 && lv + 1 < bestLevel) { bestLevel = lv + 1; bestDir = 'L'; }
+          }
+          if (bestLevel <= 3) additions.push({ x, y, level: bestLevel, dir: bestDir });
+        }
+      }
+    }
+
+    for (const { x, y } of removals) grid[y][x] = SKY;
+    for (const { x, y, level, dir, becomeSource } of additions) {
+      grid[y][x] = becomeSource ? (fluidName === 'lava' ? LAVA : WATER) : flowTileFor(fluidName, level, dir);
+    }
+  }
+
+  function simulateFluids() {
+    for (let layerIdx = 0; layerIdx < layers.length; layerIdx++) {
+      simulateFluidsForLayer(layerIdx, 'water');
+      simulateFluidsForLayer(layerIdx, 'lava');
+    }
+  }
+
+  // pixel-grid snapping: each block is BLOCK px, so 1 real pixel = 1/BLOCK
+  // block-units. Snapping the player's position to this grid every frame
+  // keeps it perfectly aligned to the same pixel grid the world renders on.
+  const PIXEL = 1 / BLOCK;
+  function snapToPixel(v) { return Math.round(v / PIXEL) * PIXEL; }
+
+  // player occupies a 1x1 block box from (x,y) to (x+1,y+1) — these
+  // return the row/column indices the box actually spans, so collision
+  // checks hit the real edges instead of a rounded center point.
+  function rowSpan(y) { return [Math.floor(y), Math.floor(y + 0.999)]; }
+  function colSpan(x) { return [Math.floor(x), Math.floor(x + 0.999)]; }
+
+  // ---- player ----
+  const player = {
+    x: 5, y: heightsArr[0][5] - 1, // block coords (float)
+    vx: 0, vy: 0,
+    hp: 10,
+  };
+
+  // which layer mining/placing currently targets: 0 = front, 1 = background.
+  // the player always physically stands on the front layer; this only changes
+  // which layer clicking on the world affects
+  let activeLayer = 0;
+  function toggleActiveLayer() {
+    if (invOpen) return;
+    activeLayer = activeLayer === 0 ? 1 : 0;
+  }
+
+  // ---- cursor: a 1x1 white pixel reticle overlaid on the screen, moved only
+  // by the arrow keys. It stays exactly where it's put regardless of player
+  // movement, camera scrolling, or which screen (world/inventory/crafting)
+  // is showing -- it's how every interaction is targeted now, instead of
+  // mouse clicks.
+  const cursor = { x: Math.floor(VIEW / 2), y: Math.floor(VIEW / 2) };
+  function moveCursor(dx, dy) {
+    cursor.x = Math.max(0, Math.min(VIEW - 1, cursor.x + dx));
+    cursor.y = Math.max(0, Math.min(VIEW - 1, cursor.y + dy));
+  }
+
+  const keys = {};
+  window.addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    keys[k] = true;
+    if (k === ' ') e.preventDefault();
+
+    // arrow keys move the cursor, not the player
+    if (k === 'arrowleft') { moveCursor(-1, 0); e.preventDefault(); }
+    else if (k === 'arrowright') { moveCursor(1, 0); e.preventDefault(); }
+    else if (k === 'arrowup') { moveCursor(0, -1); e.preventDefault(); }
+    else if (k === 'arrowdown') { moveCursor(0, 1); e.preventDefault(); }
+
+    // number keys quick-select a hotbar slot
+    if (k >= '1' && k <= '8') selectSlot(Number(k) - 1);
+
+    // enter = place/interact at the cursor (or the equivalent "click" on
+    // whatever UI screen is open); backspace = break a block at the cursor
+    if (k === 'enter') { e.preventDefault(); handleInteract(); }
+    else if (k === 'backspace') { e.preventDefault(); handleBreak(); }
+  });
+  window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+
+  // ---- layer switching (which layer mining/placing targets) ----
+  window.addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    if (k === 'l') { toggleActiveLayer(); e.preventDefault(); }
+  });
+
+  // ---- touch d-pad / jump ----
+  function bindHold(el, key) {
+    if (!el) return;
+    const press = e => { e.preventDefault(); keys[key] = true; el.classList.add('pressed'); };
+    const release = e => { if (e) e.preventDefault(); keys[key] = false; el.classList.remove('pressed'); };
+    el.addEventListener('pointerdown', press);
+    el.addEventListener('pointerup', release);
+    el.addEventListener('pointerleave', release);
+    el.addEventListener('pointercancel', release);
+  }
+  bindHold(document.getElementById('btnLeft'), 'a');
+  bindHold(document.getElementById('btnRight'), 'd');
+  bindHold(document.getElementById('btnJump'), ' ');
+
+  // ---- mine/place mode toggle (mobile) ----
+  let touchMode = 'mine';
+  const btnMode = document.getElementById('btnMode');
+  if (btnMode) {
+    btnMode.addEventListener('click', () => {
+      touchMode = touchMode === 'mine' ? 'place' : 'mine';
+      btnMode.textContent = touchMode === 'mine' ? 'MINE' : 'PLACE';
+      btnMode.classList.toggle('place', touchMode === 'place');
+    });
+  }
+
+  // ---- layer toggle (mobile) ----
+  const btnLayer = document.getElementById('btnLayer');
+  if (btnLayer) {
+    btnLayer.addEventListener('click', () => {
+      toggleActiveLayer();
+      btnLayer.textContent = activeLayer === 0 ? 'FRONT' : 'BACK';
+      btnLayer.classList.toggle('place', activeLayer === 1);
+    });
+  }
+
+  // ---- inventory model: hotbar (8) + backpack (32), each slot is either
+  // null (empty) or a {type, count} stack, count capped at 16 ----
+  const HOTBAR_SIZE = 8;
+  const INV_COLS = 8, INV_ROWS = 4, INV_SIZE = INV_COLS * INV_ROWS;
+  const STACK_MAX = 16;
+
+  const hotbarSlots = new Array(HOTBAR_SIZE).fill(null);
+  const inventorySlots = new Array(INV_SIZE).fill(null);
+  // crafting screen's 2x2 input grid; the output has its own single virtual
+  // "slot" (not part of the regular inventory) that only ever holds whatever
+  // was most recently crafted and picked up, until it's placed elsewhere
+  const CRAFT_SIZE = 4;
+  const craftSlots = new Array(CRAFT_SIZE).fill(null);
+  const craftOutputVirtual = [null];
+
+  // starter kit so there's something to build with / demo the UI
+  hotbarSlots[0] = { type: GRASS, count: 5 };
+  hotbarSlots[1] = { type: DIRT, count: 16 };
+  hotbarSlots[2] = { type: STONE, count: 16 };
+  hotbarSlots[3] = { type: WOOD, count: 8 };
+  hotbarSlots[4] = { type: LEAF, count: 8 };
+
+  // a few items in the backpack too, so the new item icons are visible right away
+  inventorySlots[0] = { type: STICK, count: 6 };
+  inventorySlots[1] = { type: COAL, count: 8 };
+  inventorySlots[2] = { type: COPPER, count: 4 };
+  inventorySlots[3] = { type: IRON, count: 4 };
+  inventorySlots[4] = { type: IRON_SWORD, count: 1 };
+  inventorySlots[5] = { type: COPPER_SWORD, count: 1 };
+  inventorySlots[6] = { type: IRON_PICKAXE, count: 1 };
+  inventorySlots[7] = { type: COPPER_PICKAXE, count: 1 };
+  inventorySlots[8] = { type: IRON_AXE, count: 1 };
+  inventorySlots[9] = { type: COPPER_AXE, count: 1 };
+
+  let selectedIndex = 1; // which hotbar slot is active for placing blocks
+  const HOTBAR_Y = VIEW - 1;           // bottom pixel row of the world canvas
+  const HOTBAR_X0 = (VIEW - 8) / 2;    // center the 8 slots horizontally
+
+  function selectSlot(i) {
+    if (hotbarSlots[i] === null) return; // empty slots aren't selectable
+    selectedIndex = i;
+  }
+
+  function updateSelName() {
+    const s = hotbarSlots[selectedIndex];
+    document.getElementById('selName').textContent = s ? `${NAMES[s.type]} x${s.count}` : 'empty';
+    document.getElementById('layerName').textContent = activeLayer === 0 ? 'front' : 'background';
+  }
+
+  // find a slot (hotbar checked first, then backpack) with room in its stack
+  function findStackWithRoom(type) {
+    for (let i = 0; i < hotbarSlots.length; i++) {
+      const s = hotbarSlots[i];
+      if (s && s.type === type && s.count < STACK_MAX) return { group: 'hotbar', index: i };
+    }
+    for (let i = 0; i < inventorySlots.length; i++) {
+      const s = inventorySlots[i];
+      if (s && s.type === type && s.count < STACK_MAX) return { group: 'inv', index: i };
+    }
+    return null;
+  }
+  function findEmptySlot() {
+    for (let i = 0; i < hotbarSlots.length; i++) if (!hotbarSlots[i]) return { group: 'hotbar', index: i };
+    for (let i = 0; i < inventorySlots.length; i++) if (!inventorySlots[i]) return { group: 'inv', index: i };
+    return null;
+  }
+  // adds 1 of `type` to an existing stack or a free slot; drops it if full
+  function pickupBlock(type) {
+    let loc = findStackWithRoom(type) || findEmptySlot();
+    if (!loc) return false;
+    const arr = loc.group === 'hotbar' ? hotbarSlots : inventorySlots;
+    if (!arr[loc.index]) arr[loc.index] = { type, count: 0 };
+    arr[loc.index].count++;
+    return true;
+  }
+
+  function drawHotbar() {
+    const blink = Math.floor(performance.now() / 400) % 2 === 0;
+    for (let i = 0; i < 8; i++) {
+      const s = hotbarSlots[i];
+      let color = '#000000';
+      if (s && AVG_COLOR[s.type]) {
+        const [r, g, b] = AVG_COLOR[s.type];
+        color = `rgb(${r},${g},${b})`;
+      }
+      if (i === selectedIndex && blink) color = '#ffffff';
+      ctx.fillStyle = color;
+      ctx.fillRect(HOTBAR_X0 + i, HOTBAR_Y, 1, 1);
+    }
+  }
+
+  // ---- full inventory screen (toggled with E / the [inventory] link) ----
+  let invOpen = false;
+  let invSelection = null; // { group: 'hotbar' | 'inv', index }
+
+  function openInventory() { invOpen = true; invSelection = null; splitArmed = false; }
+  function closeInventory() { invOpen = false; invSelection = null; splitArmed = false; }
+  function toggleInventory() { invOpen ? closeInventory() : openInventory(); }
+
+  document.getElementById('invToggle').addEventListener('click', toggleInventory);
+  window.addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    if (k === 'e' || k === 'i') { toggleInventory(); e.preventDefault(); }
+    else if (k === 'escape' && invOpen) { closeInventory(); }
+    else if (k === 'escape' && craftOpen) { closeCraftingUI(); }
+  });
+
+  // ---- crafting screen: opened from a button on the main inventory screen,
+  // just left of the exit button. Same hotbar/backpack slots carry over, plus
+  // a 2x2 grid of crafting-input slots and a (currently inert) output slot ----
+  let craftOpen = false;
+  function openCraftingUI() { craftOpen = true; invOpen = false; } // keep any current selection so it can be dropped into a craft slot
+  function closeCraftingUI() { craftOpen = false; invSelection = null; splitArmed = false; }
+
+  function getSlot(group, index) {
+    if (group === 'hotbar') return hotbarSlots[index];
+    if (group === 'craft') return craftSlots[index];
+    if (group === 'output') return craftOutputVirtual[0];
+    return inventorySlots[index];
+  }
+  function setSlot(group, index, val) {
+    if (group === 'hotbar') hotbarSlots[index] = val;
+    else if (group === 'craft') craftSlots[index] = val;
+    else if (group === 'output') craftOutputVirtual[0] = val;
+    else inventorySlots[index] = val;
+  }
+
+  // classify a canvas pixel (px,py) while the inventory screen is open
+  function hitTestInventory(px, py) {
+    if (py <= 1) {
+      if (px <= 7) return { region: 'armor', index: Math.floor(px / 2) };
+      if (px <= 11) return { region: 'bg' };
+      if (px <= 13) return { region: 'openCraft' };
+      return { region: 'exit' };
+    }
+    if (py <= 3) return { region: px <= 7 ? 'qty' : 'bg' };
+    if (py <= 11) {
+      const col = Math.floor(px / 2), row = Math.floor((py - 4) / 2);
+      return { region: 'inv', index: row * INV_COLS + col };
+    }
+    if (py <= 13) return { region: 'bg' };
+    return { region: 'hotbar', index: Math.floor(px / 2) };
+  }
+
+  // splits a held stack in half between its source slot and a destination
+  // slot: floor(count/2) moves to the destination (added onto a same-type
+  // stack there if present, capped at STACK_MAX), the rest stays behind
+  function splitStack(from, to) {
+    const heldVal = getSlot(from.group, from.index);
+    if (!heldVal || heldVal.count < 2) { invSelection = null; return; } // nothing meaningful to split
+    const destVal = getSlot(to.group, to.index);
+    if (destVal && destVal.type !== heldVal.type) { invSelection = null; return; } // incompatible stacks
+
+    const half = Math.floor(heldVal.count / 2);
+    const remain = heldVal.count - half;
+    let destCount = (destVal ? destVal.count : 0) + half;
+    let overflow = 0;
+    if (destCount > STACK_MAX) { overflow = destCount - STACK_MAX; destCount = STACK_MAX; }
+    const srcCount = remain + overflow;
+
+    setSlot(to.group, to.index, destCount > 0 ? { type: heldVal.type, count: destCount } : null);
+    setSlot(from.group, from.index, srcCount > 0 ? { type: heldVal.type, count: srcCount } : null);
+    invSelection = null;
+  }
+
+  // double-tap tracking, used to arm "split" mode: tapping a selected stack
+  // twice in quick succession arms a split, so the *next* tap on a different
+  // slot divides the held stack between the two slots instead of moving it
+  const DOUBLE_TAP_MS = 350;
+  let lastTapTime = 0, lastTapGroup = null, lastTapIndex = -1;
+  let splitArmed = false;
+
+  function handleSlotClick(group, index) {
+    const now = performance.now();
+    const isRepeatTap = lastTapGroup === group && lastTapIndex === index && (now - lastTapTime) < DOUBLE_TAP_MS;
+    lastTapTime = now; lastTapGroup = group; lastTapIndex = index;
+
+    const slot = getSlot(group, index);
+
+    if (invSelection === null) {
+      if (slot) invSelection = { group, index };
+      splitArmed = false;
+      return;
+    }
+
+    if (invSelection.group === group && invSelection.index === index) {
+      if (isRepeatTap) {
+        splitArmed = true; // double tap on the selected stack: arm a split, stay selected
+      } else {
+        invSelection = null; // single tap on the held slot again: put it back down / deselect
+        splitArmed = false;
+      }
+      return;
+    }
+
+    if (splitArmed) {
+      splitStack(invSelection, { group, index });
+      splitArmed = false;
+      return;
+    }
+
+    // move into empty, or swap with whatever's there
+    const from = invSelection;
+    const heldVal = getSlot(from.group, from.index);
+    const destVal = getSlot(group, index);
+
+    // same block type in both slots: combine into the destination stack,
+    // leaving any overflow (beyond STACK_MAX) behind in the source slot
+    if (heldVal && destVal && heldVal.type === destVal.type) {
+      const total = heldVal.count + destVal.count;
+      const merged = Math.min(total, STACK_MAX);
+      const leftover = total - merged;
+      setSlot(group, index, { type: heldVal.type, count: merged });
+      setSlot(from.group, from.index, leftover > 0 ? { type: heldVal.type, count: leftover } : null);
+      invSelection = null;
+      splitArmed = false;
+      return;
+    }
+
+    setSlot(group, index, heldVal);
+    setSlot(from.group, from.index, destVal);
+    invSelection = null;
+    splitArmed = false;
+  }
+
+  function handleInventoryClick(px, py) {
+    const hit = hitTestInventory(px, py);
+    if (hit.region === 'exit') { closeInventory(); return; }
+    if (hit.region === 'openCraft') { openCraftingUI(); return; }
+    if (hit.region === 'inv') { handleSlotClick('inv', hit.index); return; }
+    if (hit.region === 'hotbar') { handleSlotClick('hotbar', hit.index); return; }
+    // armor / bg / qty: not interactive yet
+  }
+
+  function drawInventory() {
+    if (!uiSheetReady || !sheetReady || !itemSheetReady) return;
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, VIEW, VIEW);
+
+    const uiTile = (srcX, dx, dy) => ctx.drawImage(uiSheet, srcX, 0, BLOCK, BLOCK, dx, dy, BLOCK, BLOCK);
+    const blockTile = (type, dx, dy) => { const isItem = ITEMS.has(type); if (isItem) uiTile(UI_EMPTY_X, dx, dy); const [sx, sy] = isItem ? ITEM_SHEET_POS[type] : SHEET_POS[type]; ctx.drawImage(isItem ? itemSheet : sheet, sx, sy, BLOCK, BLOCK, dx, dy, BLOCK, BLOCK); };
+    const blink = Math.floor(performance.now() / 400) % 2 === 0;
+
+    // armor row (not usable yet, always shown as empty slots) + bg fill + exit,
+    // with the crafting-screen button directly left of the exit button
+    for (let i = 0; i < 4; i++) uiTile(UI_EMPTY_X, i * 2, 0);
+    for (let i = 0; i < 2; i++) uiTile(UI_BG_X, 8 + i * 2, 0);
+    if (craftBtnReady) ctx.drawImage(craftBtnImg, 12, 0);
+    uiTile(UI_EXIT_X, 14, 0);
+
+    // quantity readout row: lit white pixels = held stack's count (up to 16),
+    // unlit pixels show the ui background tile
+    if (invSelection) {
+      const held = getSlot(invSelection.group, invSelection.index);
+      const qty = held ? Math.min(held.count, STACK_MAX) : 0;
+      for (let i = 0; i < 16; i++) {
+        const cx = i % 8, cy = Math.floor(i / 8);
+        ctx.fillStyle = i < qty ? '#ffffff' : UI_BG_COLOR;
+        ctx.fillRect(cx, 2 + cy, 1, 1);
+      }
+    } else {
+      ctx.fillStyle = UI_BG_COLOR;
+      ctx.fillRect(0, 2, 8, 2);
+    }
+    for (let i = 0; i < 4; i++) uiTile(UI_BG_X, 8 + i * 2, 2);
+
+    // backpack grid
+    for (let row = 0; row < INV_ROWS; row++) {
+      for (let col = 0; col < INV_COLS; col++) {
+        const idx = row * INV_COLS + col;
+        const dx = col * 2, dy = 4 + row * 2;
+        const stack = inventorySlots[idx];
+        const isSel = invSelection && invSelection.group === 'inv' && invSelection.index === idx;
+        if (isSel && blink) { ctx.fillStyle = '#ffffff'; ctx.fillRect(dx, dy, 2, 2); }
+        else if (stack) blockTile(stack.type, dx, dy);
+        else uiTile(UI_EMPTY_X, dx, dy);
+      }
+    }
+
+    // separator strip
+    for (let i = 0; i < 8; i++) uiTile(UI_BG_X, i * 2, 12);
+
+    // hotbar row, shown at full 2x2 resolution here
+    for (let col = 0; col < 8; col++) {
+      const dx = col * 2, dy = 14;
+      const stack = hotbarSlots[col];
+      const isSel = invSelection && invSelection.group === 'hotbar' && invSelection.index === col;
+      if (isSel && blink) { ctx.fillStyle = '#ffffff'; ctx.fillRect(dx, dy, 2, 2); }
+      else if (stack) blockTile(stack.type, dx, dy);
+      else uiTile(UI_EMPTY_X, dx, dy);
+    }
+  }
+
+  // ---- crafting recipes ----
+  // each recipe's `consume` is parallel to craftSlots: how many units to take
+  // from each input slot when the output is actually picked up. Ingredients
+  // are only ever consumed at that moment (when the output slot is "taken
+  // from"), never just for previewing what it would produce.
+  function getCraftRecipeOutput() {
+    // a wood plank in each of the 4 input slots -> crafting table
+    const allPlanks = craftSlots.every(s => s && s.type === WOOD_PLANKS && s.count >= 1);
+    if (allPlanks) return { type: CRAFTING_TABLE, count: 1, consume: [1, 1, 1, 1] };
+
+    // a log anywhere in the input grid -> 4 wood planks; only the 1 log that
+    // matched is consumed, whatever else is sitting in the other slots is left alone
+    for (let i = 0; i < craftSlots.length; i++) {
+      const s = craftSlots[i];
+      if (s && s.type === WOOD) {
+        const consume = [0, 0, 0, 0];
+        consume[i] = 1;
+        return { type: WOOD_PLANKS, count: 4, consume };
+      }
+    }
+    return null;
+  }
+
+  // clicking the output slot crafts (and picks up) the matching recipe's
+  // result the first time, consuming its ingredients right then; clicking it
+  // again just re-selects that already-crafted stack until it's placed elsewhere
+  function handleOutputSlotClick() {
+    if (invSelection !== null) return; // can only take a fresh craft with an empty hand
+    if (craftOutputVirtual[0] === null) {
+      const recipe = getCraftRecipeOutput();
+      if (!recipe) return; // nothing matches the current input grid
+      for (let i = 0; i < craftSlots.length; i++) {
+        const amt = recipe.consume[i];
+        if (amt > 0) {
+          const s = craftSlots[i];
+          s.count -= amt;
+          craftSlots[i] = s.count > 0 ? s : null;
+        }
+      }
+      craftOutputVirtual[0] = { type: recipe.type, count: recipe.count };
+    }
+    handleSlotClick('output', 0);
+  }
+
+  // ---- crafting screen (mapping: grey = bg, red = exit, green = 2x2 grid of
+  // 2x2 crafting-input slots, pink = 2x2 output slot, blue = backpack slots,
+  // yellow = hotbar slots) ----
+  function hitTestCraftingUI(px, py) {
+    if (px >= 14 && px <= 15 && py >= 0 && py <= 1) return { region: 'exit' };
+    if (px >= 12 && px <= 15 && py >= 2 && py <= 5) return { region: 'qty' };
+    if (px >= 1 && px <= 4 && py >= 1 && py <= 4) {
+      const col = Math.floor((px - 1) / 2), row = Math.floor((py - 1) / 2);
+      return { region: 'craft', index: row * 2 + col };
+    }
+    if (px >= 8 && px <= 9 && py >= 2 && py <= 3) return { region: 'output' };
+    if (py >= 6 && py <= 13) {
+      const col = Math.floor(px / 2), row = Math.floor((py - 6) / 2);
+      return { region: 'inv', index: row * INV_COLS + col };
+    }
+    if (py >= 14 && py <= 15) return { region: 'hotbar', index: Math.floor(px / 2) };
+    return { region: 'bg' };
+  }
+
+  function handleCraftingUIClick(px, py) {
+    const hit = hitTestCraftingUI(px, py);
+    if (hit.region === 'exit') { closeCraftingUI(); return; }
+    if (hit.region === 'craft') { handleSlotClick('craft', hit.index); return; }
+    if (hit.region === 'output') { handleOutputSlotClick(); return; }
+    if (hit.region === 'inv') { handleSlotClick('inv', hit.index); return; }
+    if (hit.region === 'hotbar') { handleSlotClick('hotbar', hit.index); return; }
+    // qty / bg: not interactive
+  }
+
+  function drawCraftingUI() {
+    if (!uiSheetReady || !sheetReady || !itemSheetReady) return;
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, VIEW, VIEW);
+
+    const uiTile = (srcX, dx, dy) => ctx.drawImage(uiSheet, srcX, 0, BLOCK, BLOCK, dx, dy, BLOCK, BLOCK);
+    const blockTile = (type, dx, dy) => { const isItem = ITEMS.has(type); if (isItem) uiTile(UI_EMPTY_X, dx, dy); const [sx, sy] = isItem ? ITEM_SHEET_POS[type] : SHEET_POS[type]; ctx.drawImage(isItem ? itemSheet : sheet, sx, sy, BLOCK, BLOCK, dx, dy, BLOCK, BLOCK); };
+    const blink = Math.floor(performance.now() / 400) % 2 === 0;
+
+    // background fill across the whole screen; special regions draw over top of it
+    for (let row = 0; row < 8; row++) {
+      for (let col = 0; col < 8; col++) uiTile(UI_BG_X, col * 2, row * 2);
+    }
+
+    // crafting input grid: 2x2 slots, each 2x2px
+    for (let row = 0; row < 2; row++) {
+      for (let col = 0; col < 2; col++) {
+        const idx = row * 2 + col;
+        const dx = 1 + col * 2, dy = 1 + row * 2;
+        const stack = craftSlots[idx];
+        const isSel = invSelection && invSelection.group === 'craft' && invSelection.index === idx;
+        if (isSel && blink) { ctx.fillStyle = '#ffffff'; ctx.fillRect(dx, dy, 2, 2); }
+        else if (stack) blockTile(stack.type, dx, dy);
+        else uiTile(UI_EMPTY_X, dx, dy);
+      }
+    }
+
+    // output slot -- shows the actual crafted-and-held stack if one's been
+    // taken, otherwise a preview (icon only, ingredients untouched) of what
+    // the current input grid would produce if the recipe matches
+    const recipePreview = craftOutputVirtual[0] === null ? getCraftRecipeOutput() : null;
+    {
+      const dx = 8, dy = 2;
+      const isSel = invSelection && invSelection.group === 'output' && invSelection.index === 0;
+      if (isSel && blink) { ctx.fillStyle = '#ffffff'; ctx.fillRect(dx, dy, 2, 2); }
+      else if (craftOutputVirtual[0]) blockTile(craftOutputVirtual[0].type, dx, dy);
+      else if (recipePreview) blockTile(recipePreview.type, dx, dy);
+      else uiTile(UI_EMPTY_X, dx, dy);
+    }
+
+    // exit button
+    uiTile(UI_EXIT_X, 14, 0);
+
+    // quantity readout, directly under the exit button (expanded to a full
+    // 4x4 = 16 pixel grid, one lit pixel per item). Shows the held stack's
+    // count same as usual, or -- with nothing held -- a preview of how many
+    // items the matching recipe would produce
+    let dotsQty = 0, showDots = false;
+    if (invSelection) {
+      const held = getSlot(invSelection.group, invSelection.index);
+      dotsQty = held ? Math.min(held.count, STACK_MAX) : 0;
+      showDots = true;
+    } else if (recipePreview) {
+      dotsQty = recipePreview.count;
+      showDots = true;
+    }
+    if (showDots) {
+      for (let i = 0; i < 16; i++) {
+        const cx = 12 + (i % 4), cy = 2 + Math.floor(i / 4);
+        ctx.fillStyle = i < dotsQty ? '#ffffff' : UI_BG_COLOR;
+        ctx.fillRect(cx, cy, 1, 1);
+      }
+    } else {
+      ctx.fillStyle = UI_BG_COLOR;
+      ctx.fillRect(12, 2, 4, 4);
+    }
+
+    // backpack grid, same layout as on the main inventory screen
+    for (let row = 0; row < INV_ROWS; row++) {
+      for (let col = 0; col < INV_COLS; col++) {
+        const idx = row * INV_COLS + col;
+        const dx = col * 2, dy = 6 + row * 2;
+        const stack = inventorySlots[idx];
+        const isSel = invSelection && invSelection.group === 'inv' && invSelection.index === idx;
+        if (isSel && blink) { ctx.fillStyle = '#ffffff'; ctx.fillRect(dx, dy, 2, 2); }
+        else if (stack) blockTile(stack.type, dx, dy);
+        else uiTile(UI_EMPTY_X, dx, dy);
+      }
+    }
+
+    // hotbar row
+    for (let col = 0; col < 8; col++) {
+      const dx = col * 2, dy = 14;
+      const stack = hotbarSlots[col];
+      const isSel = invSelection && invSelection.group === 'hotbar' && invSelection.index === col;
+      if (isSel && blink) { ctx.fillStyle = '#ffffff'; ctx.fillRect(dx, dy, 2, 2); }
+      else if (stack) blockTile(stack.type, dx, dy);
+      else uiTile(UI_EMPTY_X, dx, dy);
+    }
+  }
+
+  // ---- mining / placing: triggered by Backspace / Enter, targeting whatever
+  // block is under the cursor ----
+  function cursorWorldPos() {
+    const bx = Math.floor(cursor.x / BLOCK);
+    const by = Math.floor(cursor.y / BLOCK);
+    const camX = Math.max(0, Math.min(WORLD_W - COLS, Math.round(player.x - COLS / 2)));
+    const camY = Math.max(0, Math.min(WORLD_H - ROWS, Math.round(player.y - ROWS / 2)));
+    const worldX = camX + bx, worldY = camY + by;
+    if (worldX < 0 || worldX >= WORLD_W || worldY < 0 || worldY >= WORLD_H) return null;
+    return { worldX, worldY };
+  }
+
+  function placeAtCursor() {
+    const pos = cursorWorldPos();
+    if (!pos) return;
+    const { worldX, worldY } = pos;
+    const held = hotbarSlots[selectedIndex];
+    const playerRows = rowSpan(player.y);
+    const playerCols = colSpan(player.x);
+    const insidePlayer = playerCols.includes(worldX) && playerRows.includes(worldY);
+    // can place into empty air, or into a water/lava tile, replacing the fluid
+    const targetT = layers[activeLayer][worldY][worldX];
+    const canPlace = targetT === SKY || FLUIDS.has(targetT);
+    if (held && canPlace && !insidePlayer && !ITEMS.has(held.type)) {
+      layers[activeLayer][worldY][worldX] = held.type;
+      held.count--;
+      if (held.count <= 0) hotbarSlots[selectedIndex] = null;
+    }
+  }
+
+  function breakAtCursor() {
+    const pos = cursorWorldPos();
+    if (!pos) return;
+    const { worldX, worldY } = pos;
+    const t = layers[activeLayer][worldY][worldX];
+    if (t !== SKY && !FLUIDS.has(t)) {
+      pickupBlock(t);
+      layers[activeLayer][worldY][worldX] = SKY;
+    }
+  }
+
+  // Enter: on the inventory/crafting screens this is the "click" equivalent
+  // for buttons and slots at the cursor; out in the world it places/interacts
+  function handleInteract() {
+    if (invOpen) { handleInventoryClick(cursor.x, cursor.y); return; }
+    if (craftOpen) { handleCraftingUIClick(cursor.x, cursor.y); return; }
+    placeAtCursor();
+  }
+  // Backspace: breaking only makes sense out in the world
+  function handleBreak() {
+    if (invOpen || craftOpen) return;
+    breakAtCursor();
+  }
+
+  // ---- physics loop ----
+  const GRAV = 0.02;
+  const MOVE = 0.08;
+  const JUMP = 0.32;
+  let idleMs = 0;
+  let frameDt = 16.7; // ms, updated each frame from real elapsed time
+
+  function update() {
+    // horizontal input
+    if (keys['a']) player.vx = -MOVE;
+    else if (keys['d']) player.vx = MOVE;
+    else player.vx *= 0.5;
+
+    // is the player currently submerged in a fluid (water or lava)?
+    const swimRows = rowSpan(player.y);
+    const swimCols = colSpan(player.x);
+    const inFluid = swimCols.some(c => swimRows.some(r => fluidAt(c, r)));
+
+    // jump: on solid ground, or a gentle upward stroke while swimming
+    const groundCols = colSpan(player.x);
+    const onGround = groundCols.some(c => solidAt(c, Math.floor(player.y + 1.001)));
+    if ((keys['w'] || keys[' '])) {
+      if (onGround) player.vy = -JUMP;
+      else if (inFluid) player.vy -= GRAV * 2.2; // swim stroke, fights buoyancy below
+    }
+
+    player.vy += inFluid ? GRAV * 0.35 : GRAV; // fluids are buoyant: much less effective gravity
+    const maxFall = inFluid ? 0.08 : 0.4;
+    if (player.vy > maxFall) player.vy = maxFall;
+    if (inFluid && player.vy < -0.12) player.vy = -0.12; // capped swim-up speed too
+
+    // ---- move X, colliding against the true block edge ----
+    let nx = player.x + player.vx;
+    if (player.vx !== 0) {
+      const rows = rowSpan(player.y);
+      if (player.vx > 0) {
+        const edgeCol = Math.floor(nx + 1); // column the player's right edge would enter
+        if (rows.some(r => solidAt(edgeCol, r))) nx = edgeCol - 1;
+      } else {
+        const edgeCol = Math.floor(nx); // column the player's left edge would enter
+        if (rows.some(r => solidAt(edgeCol, r))) nx = edgeCol + 1;
+      }
+    }
+    player.x = nx;
+
+    // ---- move Y, colliding against the true block edge ----
+    let ny = player.y + player.vy;
+    const cols = colSpan(player.x);
+    if (player.vy > 0) {
+      const edgeRow = Math.floor(ny + 1); // row the player's bottom edge would enter
+      if (cols.some(c => solidAt(c, edgeRow))) {
+        ny = edgeRow - 1;
+        player.vy = 0;
+      }
+    } else if (player.vy < 0) {
+      const edgeRow = Math.floor(ny); // row the player's top edge would enter
+      if (cols.some(c => solidAt(c, edgeRow))) {
+        ny = edgeRow + 1; // stop with top edge flush against the block's underside
+        player.vy = 0;
+      }
+    }
+    player.y = ny;
+
+    if (player.y > WORLD_H + 5) {
+      player.y = heightsArr[0][Math.round(player.x)] - 1;
+      player.hp = Math.max(0, player.hp - 1);
+      document.getElementById('hp').textContent = player.hp;
+    }
+
+    // ---- snap to the pixel grid after 1s of being idle ----
+    const moving = Boolean(
+      keys['a'] || keys['d'] || keys['w'] || keys[' ']
+    ) || Math.abs(player.vx) > 0.001 || Math.abs(player.vy) > 0.001;
+
+    if (moving) {
+      idleMs = 0;
+    } else {
+      idleMs += frameDt;
+      if (idleMs >= 1000) {
+        player.x = snapToPixel(player.x);
+        player.y = snapToPixel(player.y);
+      }
+    }
+  }
+
+  // ---- render at true 16x16 resolution ----
+  // draws one block tile at destination (dx,dy), mirroring horizontally for
+  // left-flowing fluid tiles whose art is authored facing right
+  function drawTile(sx, sy, dx, dy, mirrored) {
+    if (mirrored) {
+      ctx.save();
+      ctx.translate(dx + BLOCK, dy);
+      ctx.scale(-1, 1);
+      ctx.drawImage(sheet, sx, sy, BLOCK, BLOCK, 0, 0, BLOCK, BLOCK);
+      ctx.restore();
+    } else {
+      ctx.drawImage(sheet, sx, sy, BLOCK, BLOCK, dx, dy, BLOCK, BLOCK);
+    }
+  }
+
+  function draw() {
+    if (!sheetReady) return;
+    const camX = Math.max(0, Math.min(WORLD_W - COLS, Math.round(player.x - COLS / 2)));
+    const camY = Math.max(0, Math.min(WORLD_H - ROWS, Math.round(player.y - ROWS / 2)));
+
+    ctx.fillStyle = SKY_COLOR;
+    ctx.fillRect(0, 0, VIEW, VIEW);
+
+    // background layer first, darkened, visible only through gaps in the front layer
+    for (let ry = 0; ry < ROWS; ry++) {
+      for (let rx = 0; rx < COLS; rx++) {
+        const t = blockAtLayer(1, camX + rx, camY + ry);
+        if (t !== SKY) {
+          const [sx, sy] = SHEET_POS[t];
+          const dx = rx * BLOCK, dy = ry * BLOCK;
+          drawTile(sx, sy, dx, dy, MIRRORED_TILES.has(t));
+          ctx.fillStyle = 'rgba(0,0,0,0.5)';
+          ctx.fillRect(dx, dy, BLOCK, BLOCK);
+        }
+      }
+    }
+    // front layer on top, full brightness; SKY tiles are left transparent so
+    // the darkened background shows through any gaps
+    for (let ry = 0; ry < ROWS; ry++) {
+      for (let rx = 0; rx < COLS; rx++) {
+        const t = blockAtLayer(0, camX + rx, camY + ry);
+        if (t !== SKY) {
+          const [sx, sy] = SHEET_POS[t];
+          drawTile(sx, sy, rx * BLOCK, ry * BLOCK, MIRRORED_TILES.has(t));
+        }
+      }
+    }
+
+    // player: 1 block, bright pixel so it reads against terrain
+    const psx = Math.round((player.x - camX) * BLOCK);
+    const psy = Math.round((player.y - camY) * BLOCK);
+    ctx.fillStyle = '#ffe75e';
+    ctx.fillRect(psx, psy, BLOCK, BLOCK);
+
+    drawHotbar();
+  }
+
+  // ---- cursor overlay: always drawn last, on top of whatever screen is showing ----
+  function drawCursor() {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(cursor.x, cursor.y, 1, 1);
+  }
+
+  let lastTime = null;
+  let fluidTickAcc = 0;
+  const FLUID_TICK_MS = 150; // how often fluids spread/recede, like Minecraft's water ticks
+  function loop(ts) {
+    if (lastTime !== null) frameDt = ts - lastTime;
+    lastTime = ts;
+    updateSelName();
+    if (invOpen) {
+      drawInventory();
+    } else if (craftOpen) {
+      drawCraftingUI();
+    } else {
+      update();
+      fluidTickAcc += frameDt;
+      while (fluidTickAcc >= FLUID_TICK_MS) {
+        simulateFluids();
+        fluidTickAcc -= FLUID_TICK_MS;
+      }
+      draw();
+    }
+    drawCursor();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
