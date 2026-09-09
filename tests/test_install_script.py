@@ -72,6 +72,7 @@ def test_desktop_entries_are_written_for_every_windowed_app(tmp_path):
         "pi-imgshow.desktop",
         "pi-life.desktop",
         "pi-menu.desktop",
+        "pi-microcraft.desktop",
         "pi-platformer.desktop",
     ]
 
@@ -85,6 +86,19 @@ def test_the_platform_game_is_installed_as_a_game(tmp_path):
     )
     assert fields["Categories"] == "Game;ArcadeGame;"
     assert fields["Exec"].endswith("/venv/bin/pi-platformer")
+    assert fields["Terminal"] == "true"
+
+
+def test_microcraft_is_installed_as_a_game_in_a_terminal(tmp_path):
+    run_bash("install_desktop_entries", tmp_path)
+    entry = (tmp_path / ".local/share/applications/pi-microcraft.desktop").read_text()
+
+    fields = dict(
+        line.split("=", 1) for line in entry.strip().splitlines()[1:] if "=" in line
+    )
+    assert fields["Name"] == "MicroCraft (Stellar Unicorn)"
+    assert fields["Exec"].endswith("/venv/bin/pi-microcraft")
+    assert fields["Categories"] == "Game;Simulation;"
     assert fields["Terminal"] == "true"
 
 

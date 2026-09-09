@@ -54,6 +54,7 @@ MODULES = [
     "pi_menu.life.app",
     "pi_menu.imgshow.app",
     "pi_menu.platformer.app",
+    "pi_menu.microcraft.app",
 ]
 
 
@@ -75,7 +76,13 @@ def test_help_lists_the_options_without_opening_a_window(name, capsys):
 
 
 @pytest.mark.parametrize(
-    "name", ["pi_menu.life.app", "pi_menu.imgshow.app", "pi_menu.platformer.app"]
+    "name",
+    [
+        "pi_menu.life.app",
+        "pi_menu.imgshow.app",
+        "pi_menu.platformer.app",
+        "pi_menu.microcraft.app",
+    ],
 )
 def test_the_apps_share_the_display_options(name, capsys):
     module = importlib.import_module(name)
@@ -125,6 +132,25 @@ def test_list_offers_the_platform_game(capsys):
     output = capsys.readouterr().out
     assert "Platform Game" in output
     assert "pi_menu.platformer.app" in output
+
+
+def test_list_offers_microcraft(capsys):
+    launcher = importlib.import_module("pi_menu.launcher")
+
+    assert launcher.main(["--list"]) == 0
+
+    output = capsys.readouterr().out
+    assert "MicroCraft" in output
+    assert "pi_menu.microcraft.app" in output
+
+
+def test_microcraft_takes_a_seed(capsys):
+    module = importlib.import_module("pi_menu.microcraft.app")
+
+    with pytest.raises(SystemExit):
+        module.main(["--help"])
+
+    assert "--seed" in capsys.readouterr().out
 
 
 def test_the_launcher_writes_a_log_even_for_list(tmp_path, monkeypatch, capsys):

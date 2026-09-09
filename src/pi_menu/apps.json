@@ -34,6 +34,17 @@
       "hold": "on-error"
     },
     {
+      "id": "microcraft",
+      "name": "MicroCraft",
+      "description": "A block-building world on the Stellar Unicorn: dig, build, craft, swim and watch the weather roll in. A looping world with two layers, water and lava that flow, fire, grass that spreads, a forty-minute day with the real moon's phase, clouds, rain and lightning. A/D walk, W jumps, the arrows move a cursor, Enter places and Backspace breaks.",
+      "command": [
+        "{python}",
+        "-m",
+        "pi_menu.microcraft.app"
+      ],
+      "hold": "on-error"
+    },
+    {
       "id": "doctor",
       "name": "Panel Self-Test",
       "description": "Check the link to the Stellar Unicorn one layer at a time, then light the panel up. Run this first when the panel stays dark.",

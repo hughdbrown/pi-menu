@@ -10,6 +10,7 @@ panel) attached over USB:
 | **Game of Life** (`pi-life`) | Conway's Game of Life on the panel, with start/stop/reset/random and a 16×16 grid you draw on. |
 | **Image Shower** (`pi-imgshow`) | Pick an image file and show it on the panel. PNG, JPEG, BMP, WebP and animated GIF. |
 | **Platform Game** (`pi-platformer`) | A side-scrolling platform game with chiptune from the panel's speaker. Sixty levels, four boss fights, and a menu drawn on the panel itself. |
+| **MicroCraft** (`pi-microcraft`) | A block-building world: dig, build and craft on a looping planet with flowing water and lava, fire, weather, and a forty-minute day under the real moon. |
 | **Panel Self-Test** (`pi-menu-doctor`) | Checks every layer between the Pi and the LEDs, then lights the panel up. Run this first when the panel stays dark. |
 | **Flash Panel Firmware** (`pi-menu-flash`) | Copies the frame server onto the Stellar Unicorn's Pico over USB. Needs nothing but pyserial. |
 
@@ -29,6 +30,7 @@ Raspberry Pi                                  Stellar Unicorn (Pico W)
 │   pi-life       (Life rules) │              │        │             │
 │   pi-imgshow    (scaling)    │ ◀── acks ─── │        ▼             │
 │   pi-platformer (physics)    │              │   16×16 RGB LEDs     │
+│   pi-microcraft (a world)    │              │                      │
 └──────────────────────────────┘              └──────────────────────┘
          all the logic                           just blits frames
 ```
@@ -181,6 +183,52 @@ second after you walk off a ledge, and one pressed just before you land is
 remembered and fires on landing. On a screen sixteen pixels tall, a jump
 missed by one frame is a death, and without that the game reads as broken
 rather than hard.
+
+### MicroCraft
+
+A port of the browser game of the same name: a two-layer, looping world of
+two-pixel blocks, seen eight blocks square. Like the platform game it lives
+entirely on the panel; the window holds the keyboard and says in words what
+you are holding, which layer you are aiming at, and the local time of day.
+
+- **A** and **D** walk, **W** or **Space** jumps — or swims up, in water.
+- **The arrows move a one-pixel cursor**, which is how everything is aimed.
+  It inverts whatever it sits on, so it shows against anything.
+- **Enter** acts on what is under the cursor: places the block in hand,
+  scoops or pours a bucket, opens a placed crafting table, or presses a
+  button or slot on the inventory screens.
+- **Hold Backspace** to break the block under the cursor. A crack spreads
+  across it; stone takes four seconds bare-handed, a fifth of that with an
+  iron pickaxe.
+- **1–8** pick a hotbar slot. The chosen slot blinks white on the bottom row.
+- **E** opens the inventory: your backpack above, hotbar below. Enter picks
+  a stack up, Enter again puts it down, on a stranger swaps, on its own kind
+  merges. Two quick presses on a picked-up stack arm a split. The button left
+  of the red exit opens a 2×2 crafting bench; a placed crafting table gives
+  you the 3×3 grid the stone tools need.
+- **L** switches aim between the front layer you walk on and the background
+  behind it, drawn at half brightness.
+- **Q** three times quickly drops one of what you hold. **Esc** closes a
+  screen, or returns from the world to the opening screen. **C** saves a PNG.
+
+The world is a strip two thousand blocks round: walk far enough east and you
+are home, and digging through the molten core drops you out on the far side.
+Water and lava flow and taper; lava lights wood, water puts it out, and fire
+bakes clay to brick. Grass creeps over sunlit dirt and dies under cover. A
+day lasts forty minutes and your position on the loop shifts your clock like
+a time zone; the moon's phase is the real one, and a new moon at noon is a
+total eclipse. Clouds drift east on a constant wind; storm clouds rain, the
+tall ones throw lightning, and deep water swells in proportion to its depth
+and the weather. Every run is a new world, or pass `--seed` for the same one.
+
+**Colours on the panel.** The browser art was drawn for a bright screen at
+many pixels a block; at two LEDs a block, stone, cobblestone, coal ore and
+clay were the same dim grey, and dirt was nearly black. MicroCraft draws
+from its own palette (`pi_menu/microcraft/palette.py`): each block keeps its
+two-tone shape but is lifted well above the LEDs' floor and given a hue no
+neighbour shares — ore is grey with bright flecks of its metal, the furnace
+has a glowing mouth, clay leans blue, and the background layer is dimmed by
+half rather than to black. A test asserts every pair of blocks stays apart.
 
 ### No panel attached?
 

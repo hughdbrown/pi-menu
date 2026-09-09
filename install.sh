@@ -19,8 +19,8 @@ BIN_DIR="$HOME/.local/bin"
 DESKTOP_DIR="$HOME/.local/share/applications"
 CONFIG_DIR="$HOME/.config/pi-menu"
 
-COMMANDS=(pi-menu pi-life pi-imgshow pi-platformer pi-menu-doctor pi-menu-flash)
-DESKTOP_FILES=(pi-menu.desktop pi-life.desktop pi-imgshow.desktop pi-platformer.desktop)
+COMMANDS=(pi-menu pi-life pi-imgshow pi-platformer pi-microcraft pi-menu-doctor pi-menu-flash)
+DESKTOP_FILES=(pi-menu.desktop pi-life.desktop pi-imgshow.desktop pi-platformer.desktop pi-microcraft.desktop)
 
 PROMPT=1
 
@@ -190,7 +190,7 @@ install_desktop_entries() {
         "Utility;" \
         false
 
-    # These three run with Terminal=true so that starting them straight
+    # These run with Terminal=true so that starting them straight
     # from the Pi menu still shows the connection messages, exactly as it
     # does when Pi Menu launches them.
     write_desktop_entry pi-life.desktop \
@@ -215,6 +215,14 @@ install_desktop_entries() {
         "$VENV/bin/pi-platformer" \
         applications-games \
         "Game;ArcadeGame;" \
+        true
+
+    write_desktop_entry pi-microcraft.desktop \
+        "MicroCraft (Stellar Unicorn)" \
+        "Block-building world on a 16x16 LED panel" \
+        "$VENV/bin/pi-microcraft" \
+        applications-games \
+        "Game;Simulation;" \
         true
 }
 
@@ -303,6 +311,7 @@ main() {
       pi-life        Conway's Game of Life
       pi-imgshow     the image shower
       pi-platformer  the platform game
+      pi-microcraft  the block-building world
       pi-menu-flash  copy the frame server onto the panel
       pi-menu-doctor check the link to the panel, layer by layer
 

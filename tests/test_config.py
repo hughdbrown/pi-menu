@@ -19,6 +19,7 @@ def test_the_packaged_app_list_offers_the_apps_and_the_setup_tools():
         "life",
         "imgshow",
         "platformer",
+        "microcraft",
         "doctor",
         "flash",
     }

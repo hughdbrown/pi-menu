@@ -23,6 +23,7 @@ pi-menu-flash = "pi_menu.flash:main"
 pi-life = "pi_menu.life.app:main"
 pi-imgshow = "pi_menu.imgshow.app:main"
 pi-platformer = "pi_menu.platformer.app:main"
+pi-microcraft = "pi_menu.microcraft.app:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
