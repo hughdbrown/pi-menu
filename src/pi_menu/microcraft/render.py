@@ -98,11 +98,16 @@ def ui_tile(canvas: Canvas, src_x: int, dx: int, dy: int) -> None:
     canvas.tile(palette.UI_SHEET, src_x, 0, dx, dy)
 
 
+def slot_tile(canvas: Canvas, dx: int, dy: int) -> None:
+    """An empty slot, in the hue its position on the panel gives it."""
+    canvas.tile(palette.slot_tile(dx, dy), 0, 0, dx, dy)
+
+
 def item_tile(canvas: Canvas, kind: int, dx: int, dy: int) -> None:
-    """A block or item at 2x2; items sit on an empty-slot tile."""
+    """A block or item at 2x2; items sit on their slot's tile."""
     sheet, sx, sy, mirrored = palette.tile_art(kind)
     if kind in tiles.ITEMS:
-        ui_tile(canvas, tiles.UI_EMPTY_X, dx, dy)
+        slot_tile(canvas, dx, dy)
     canvas.tile(sheet, sx, sy, dx, dy, mirrored)
 
 
@@ -181,7 +186,7 @@ def draw_hotbar(canvas: Canvas, inventory: Inventory, now_ms: float) -> None:
         elif stack is not None:
             item_tile(canvas, stack.kind, dx, dy)
         else:
-            ui_tile(canvas, tiles.UI_EMPTY_X, dx, dy)
+            slot_tile(canvas, dx, dy)
 
 
 def draw_world(
@@ -232,7 +237,7 @@ def _slot(canvas: Canvas, inventory: Inventory, group: str, index: int, dx: int,
     elif stack is not None:
         item_tile(canvas, stack.kind, dx, dy)
     else:
-        ui_tile(canvas, tiles.UI_EMPTY_X, dx, dy)
+        slot_tile(canvas, dx, dy)
 
 
 def _backpack_and_hotbar(canvas: Canvas, inventory: Inventory, top: int, blink: bool) -> None:
@@ -265,7 +270,7 @@ def draw_inventory(canvas: Canvas, inventory: Inventory, now_ms: float) -> None:
     blink = blinking(now_ms)
     canvas.fill(BLACK)
     for i in range(4):
-        ui_tile(canvas, tiles.UI_EMPTY_X, i * 2, 0)
+        slot_tile(canvas, i * 2, 0)
     for i in range(2):
         ui_tile(canvas, tiles.UI_BG_X, 8 + i * 2, 0)
     canvas.tile(palette.CRAFT_BUTTON, 0, 0, 12, 0)
@@ -306,7 +311,7 @@ def _crafting_screen(
     elif preview is not None:
         item_tile(canvas, preview.kind, output_x, 2)
     else:
-        ui_tile(canvas, tiles.UI_EMPTY_X, output_x, 2)
+        slot_tile(canvas, output_x, 2)
 
     ui_tile(canvas, tiles.UI_EXIT_X, 14, 0)
     count = _held_count(inventory)

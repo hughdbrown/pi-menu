@@ -106,8 +106,12 @@ def test_the_hotbar_runs_along_the_bottom_with_the_selected_slot_blinking(scene)
     assert tile_pixels(canvas, 1, 7) == (render.WHITE,) * 4  # slot 1, blink on at t=0
     sheet, sx, sy, _ = palette.tile_art(tiles.GRASS)
     assert tile_pixels(canvas, 0, 7) == tuple(sheet[sy + dy][sx + dx] for dy in range(2) for dx in range(2))
-    assert tile_pixels(canvas, 7, 7) == (palette.UI_SHEET[0][0], palette.UI_SHEET[0][1],
-                                          palette.UI_SHEET[1][0], palette.UI_SHEET[1][1])
+    (tl, tr), (bl, br) = palette.slot_tile(14, 14)
+    assert tile_pixels(canvas, 7, 7) == (tl, tr, bl, br)  # slot 8 is empty
+    # Neighbouring empty slots wear different hues, so they do not fuse.
+    bag.hotbar[6] = None
+    render.draw_hotbar(canvas, bag, now_ms=0)
+    assert canvas.get(12, 14) != canvas.get(14, 14)
     later = Canvas()
     render.draw_hotbar(later, bag, now_ms=render.BLINK_MS)
     assert tile_pixels(later, 1, 7) != (render.WHITE,) * 4
@@ -150,7 +154,8 @@ def test_the_inventory_screen_has_its_buttons_where_the_hit_test_says():
     render.draw_inventory(canvas, Inventory(), now_ms=0)
     assert canvas.get(14, 0) == palette.UI_SHEET[0][tiles.UI_EXIT_X]
     assert canvas.get(12, 0) == palette.CRAFT_BUTTON[0][0]
-    assert canvas.get(0, 0) == palette.UI_SHEET[0][0]  # an empty armour slot
+    assert canvas.get(0, 0) == palette.slot_colour(0, 0)  # an empty armour slot
+    assert canvas.get(2, 0) == palette.slot_colour(2, 0) != canvas.get(0, 0)
     assert canvas.get(3, 2) == palette.UI_BG_COLOUR  # nothing held: plain dots
     sheet, sx, sy, _ = palette.tile_art(tiles.STICK)
     assert canvas.get(1, 4) == sheet[sy][sx + 1]  # backpack slot 0 holds sticks
