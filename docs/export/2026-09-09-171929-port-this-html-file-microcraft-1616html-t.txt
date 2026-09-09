@@ -1,0 +1,615 @@
+ ▐▛███▛█   Claude Code v2.1.263
+▝▜██████▀  Fable 5.1 · Claude Max
+  ▝▝ ▝▝    ~/workspace/tyler/pi-menu
+
+
+❯ Port this HTML file @"MicroCraft — 16×16.html"  to be an application under    
+  the pi-menu framework.                                                        
+                                                                                
+  1. Review the HTML code                                                       
+  2. Make plans for porting to pi-menu                                          
+  3. Write out the plans                                                        
+  4. Begin porting, continue until done                                         
+                                                                                
+  Let me know if there are any questions.                                       
+  /goal set "Continue this code work until the plans are satisfied."            
+
+⏺ I'll start by reviewing the HTML file and the pi-menu framework, then write a
+  porting plan and execute it.
+
+  Searched for 1 pattern, ran 2 shell commands (ctrl+o to expand)
+
+⏺ Now the HTML itself and the framework files it will map onto.
+
+  Searched for 1 pattern, read 1 file, ran 14 shell commands (ctrl+o to expand)
+
+⏺ I've reviewed the ~3,900-line HTML file covering the procedural world, layers,
+  fluids, fire, day/night, weather, crafting, and demo tour, plus the framework
+  conventions. I'll do two more lookups before writing the plan. · summarized
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ I'm writing the plan now, deciding key choices upfront: matching the HTML's
+  desktop key layout, a 20 Hz tick with three 60 Hz physics substeps for
+  consistent feel, and vertically/horizontally bounded simulation windows so
+  Python can keep up. · summarized
+
+⏺ Write(docs/superpowers/plans/2026-09-09-microcraft.md)
+  ⎿  Wrote 191 lines to docs/superpowers/plans/2026-09-09-microcraft.md
+       1 # MicroCraft Port Plan
+       3 **Goal:** Port `MicroCraft — 16×16.html` — a two-layer, looping,
+          block-building
+         entory and two
+       5 crafting benches — to a `pi-microcraft` app in the Pi Menu frame
+       6 the 16×16 Stellar Unicorn and driven from the keyboard.
+       7 
+         Script in one
+       9 IIFE, five embedded PNG sprite sheets). It stays in the repo as 
+      10 nothing at runtime reads it.
+     … +301 lines (ctrl+o to expand)
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Plan committed. Starting Task 1: the sprite extraction tool, tile definitions,
+  and their tests.
+
+⏺ Write(tools/extract_microcraft_sprites.py)
+  ⎿  Wrote 82 lines to tools/extract_microcraft_sprites.py
+      1 #!/usr/bin/env python3
+      2 """Regenerate ``pi_menu/microcraft/sprites.py`` from the MicroCra
+      3 
+      4 The game's art lives in the HTML as five base64 PNGs. The panel w
+        ants
+        nd on
+      6 Pillow at run time, so this reads them once and writes the pixels
+         out as
+      8 
+      9     .venv/bin/python tools/extract_microcraft_sprites.py
+     … +84 lines (ctrl+o to expand)
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Sprites generated. Now the tile catalogue and its tests.
+
+⏺ Write(src/pi_menu/microcraft/tiles.py)
+  ⎿  Wrote 281 lines to src/pi_menu/microcraft/tiles.py
+      1 """Every kind of block and item, and what is true of each.
+      3 Ids follow the HTML exactly so a saved screenshot, a recipe or a 
+        bug
+      4 report reads the same against either version. Blocks are below 10
+      5 can be placed in the world; items are 100 and up and only ever li
+        ve in
+        nd on,
+      7 and each has a source tile plus seven flowing tiles that carry th
+        e
+      9 """
+     … +310 lines (ctrl+o to expand)
+
+⏺ Write(tests/test_microcraft_tiles.py)
+  ⎿  Wrote 101 lines to tests/test_microcraft_tiles.py
+       1 """The tile catalogue agrees with itself and with the art."""
+       2 
+       3 from __future__ import annotations
+       4 
+       5 import pytest
+       7 from pi_menu.microcraft import sprites, tiles
+       8 
+       9 
+      10 def test_every_named_thing_has_art_and_every_drawn_thing_has_a_n
+         ame():
+     … +109 lines (ctrl+o to expand)
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Task 2: noise and terrain. I'll store chunks column-major so a column fill is
+  one slice assignment, and inline the hash in the ore loop to keep chunk
+  generation near the budget.
+
+⏺ Write(src/pi_menu/microcraft/noise.py)
+  ⎿  Wrote 56 lines to src/pi_menu/microcraft/noise.py
+      1 """Deterministic hashing and value noise, plus the world's wrap.
+      2 
+      3 Everything about the terrain is a pure function of world coordina
+      4 a seed, never of the order things were asked for, so any chunk ca
+        n be
+      5 generated on demand and always comes out the same. The hash mirro
+        rs the
+      7 """
+      8 
+      9 from __future__ import annotations
+     … +53 lines (ctrl+o to expand)
+
+⏺ Write(src/pi_menu/microcraft/terrain.py)
+  ⎿  Wrote 371 lines to src/pi_menu/microcraft/terrain.py
+      1 """The world: a looping strip of terrain, generated a chunk at a 
+      2 
+      3 Heights, oceans, lakes and trees are pure functions of a column a
+        nd the
+         looks
+      5 at them; they are never thrown away, because a chunk holds the pl
+      6 edits and regenerating it would silently undo them.
+      7 
+      8 Rows count downwards: row 0 is the top of the sky and row 1249 th
+      9 """
+     … +403 lines (ctrl+o to expand)
+
+⏺ Write(tests/test_microcraft_terrain.py)
+  ⎿  Wrote 243 lines to tests/test_microcraft_terrain.py
+       1 """The world is deterministic, loops, and is shaped the way the 
+         rules say."""
+       2 
+       3 from __future__ import annotations
+       4 
+       6 
+       7 from pi_menu.microcraft import noise, tiles
+       8 from pi_menu.microcraft.terrain import (
+       9     BACK,
+      10     CHUNK_W,
+     … +262 lines (ctrl+o to expand)
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Chunk generation runs at 14ms, well within budget. The three test failures are
+  due to a flawed test assumption—the nearest dry column to a wet start is
+  intentionally sand shoreline—so I'll fix the test to check a column with dry
+  neighbours instead. · summarized
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ The last failure is seed 1 spawning on a bare mountain, which the original
+  also allows. I'll make the test walk to a grassy column instead, then commit
+  Task 2.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Task 3: the fluid, fire and grass simulations. I'll add a column accessor to
+  the world so the 65×65 scan indexes bytearrays directly instead of going
+  through the per-cell getter.
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Write(src/pi_menu/microcraft/sim.py)
+  ⎿  Wrote 291 lines to src/pi_menu/microcraft/sim.py
+       1 """What the world does on its own: fluids flow, fire burns, gras
+       2 
+         ADIUS``
+       4 blocks each way. The HTML scanned whole columns from sky to core
+       5 is far more than Python can afford several times a second and no
+       6 outside the box is ever on the panel, so the box is bounded vert
+       7 too. Everything inside behaves exactly as it did.
+       8 
+         ough
+         .
+     … +318 lines (ctrl+o to expand)
+
+⏺ Write(tests/test_microcraft_sim.py)  ⎿  Wrote 262 lines to tests/test_microcraft_sim.py
+       1 """Fluids spread and recede, fire burns and drowns, grass grows 
+         and dies."""
+       2 
+       3 from __future__ import annotations
+       4 
+       6 
+       7 import pytest
+       8 
+       9 from pi_menu.microcraft import sim, tiles
+      10 from pi_menu.microcraft.terrain import BACK, FRONT, World
+     … +277 lines (ctrl+o to expand)
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ My fluid results are actually correct—I had left and right swapped in my test
+  expectations, and the fire test miscounted a shared tick between ignition and
+  decrement. I'll fix the tests now. · summarized
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Fixing the last test failure — it had the wrong expectation about level-1 side
+  flow during mid-air falls. I'll update it to correctly reflect that a falling
+  tile with nothing underneath feeds nothing sideways, then commit Task 3. 
+  · summarized
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ All 20 tests pass, but fluids simulation runs at 8.6 ms per tick versus the 4
+  ms target. I'll add a cheap column pre-check using a C-level set intersection
+  to skip fluid-free neighborhoods, then re-time before committing. · summarized
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Fluids now take about 1.5 ms per tick with a lake in view. Committing Task 3
+  and moving on to Task 4 (the blending canvas and the sky).
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Task 4: the blending canvas and the sky. Writing both modules and their tests
+  together.
+
+⏺ Write(src/pi_menu/microcraft/canvas.py)
+  ⎿  Wrote 183 lines to src/pi_menu/microcraft/canvas.py
+       1 """A 16x16 drawing surface that knows how to blend.
+       3 The HTML leans on the browser canvas for translucency: sky gradi
+         ents,
+         orm
+       5 tints, the lightning flash, and a cursor that inverts what is un
+       6 The panel takes plain bytes, so this keeps float RGB per pixel, 
+         blends
+       8 
+       9 Coordinates are canvas pixels (0..15); anything outside is ignor
+      10 a canvas would clip it.
+     … +197 lines (ctrl+o to expand)
+
+⏺ Write(src/pi_menu/microcraft/sky.py)
+  ⎿  Wrote 240 lines to src/pi_menu/microcraft/sky.py
+       1 """Day, night, and what hangs in the sky.
+       3 A full day takes forty minutes of real time for a player who sta
+         ys put.
+       4 Because the world loops, where you stand shifts your local time 
+       5 time zones do, so the far side of the loop is having the opposit
+         e time
+         new
+       7 moon, so its phase is the phase outside the window right now.
+       8 """
+      10 from __future__ import annotations
+     … +260 lines (ctrl+o to expand)
+
+⏺ Write(tests/test_microcraft_sky.py)
+  ⎿  Wrote 256 lines to tests/test_microcraft_sky.py
+      1 """The canvas blends the way a browser canvas does, and the sky k
+        eeps time."""
+      2 
+      3 from __future__ import annotations
+      4 
+      5 import datetime
+      6 import math
+      7 import random
+      8 
+      9 import pytest
+     … +273 lines (ctrl+o to expand)
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Found a floating-point edge case at the quarter moon phase where illumination
+  rounds just under 0.5, matching JavaScript's actual behavior—so I'll adjust
+  the test expectation and commit Task 4. · summarized
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Now tackling the weather module, the largest one yet (clouds, cover/rain
+  queries, raindrops, lightning, waves). I'll write it alongside its tests and
+  check cloud-drawing performance, since that's most likely to strain the 16×16
+  canvas. · summarized
+
+⏺ Write(src/pi_menu/microcraft/weather.py)
+  ⎿  Wrote 670 lines to src/pi_menu/microcraft/weather.py
+       1 """Clouds, rain, lightning and waves.
+       3 Clouds are swarms of free particles, each pulled only toward its
+       4 slowly wandering anchor, so a cloud is a loose, living volume ra
+         ther
+         atever
+         e as a
+         , and
+       8 waves rise on open water in proportion to its depth and the weat
+       9 
+         seeded
+     … +772 lines (ctrl+o to expand)
+
+⏺ Weather module written. Now its tests, and in parallel a timing check on cloud
+  drawing and particle motion.
+
+⏺ Write(tests/test_microcraft_weather.py)
+  ⎿  Wrote 325 lines to tests/test_microcraft_weather.py
+       1 """Clouds drift and recycle, rain falls where it should, waves f
+         ollow depth."""
+       2 
+       3 from __future__ import annotations
+       4 
+       6 import random
+       7 
+       8 import pytest
+       9 
+      10 from pi_menu.microcraft import tiles, weather
+     … +357 lines (ctrl+o to expand)
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ The drops all look correct—the failure was just my test using a strict bound
+  instead of the actual −16 to 15 inclusive range. Fixing the test and
+  committing Task 5. · summarized
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Write(src/pi_menu/microcraft/inventory.py)
+  ⎿  Wrote 436 lines to src/pi_menu/microcraft/inventory.py
+       1 """What the player carries, and how it is moved about and crafte
+       2 
+          stack.
+       4 The inventory screens are driven by one cursor and one button, s
+       5 slot is *selected* with a first press and *moved* with a second:
+       6 an empty slot, swapping with a different kind, merging with the 
+       7 kind. Two quick presses on the selected stack arm a split, and t
+         he next
+       9 
+         or the
+     … +489 lines (ctrl+o to expand)
+
+⏺ Write(tests/test_microcraft_inventory.py)
+  ⎿  Wrote 314 lines to tests/test_microcraft_inventory.py
+       1 """Stacks move, merge and split the way the HTML's screens do; r
+         ecipes match."""
+       2 
+       3 from __future__ import annotations
+       4 
+       6 
+       7 from pi_menu.microcraft import tiles
+       8 from pi_menu.microcraft.inventory import (
+       9     BACKPACK,
+      10     CRAFT,
+     … +345 lines (ctrl+o to expand)
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Write(src/pi_menu/microcraft/player.py)
+  ⎿  Wrote 319 lines to src/pi_menu/microcraft/player.py
+       1 """The player: a one-block box that walks, jumps, swims, digs an
+       2 
+         walking
+       4 ``0.08``, a jump of ``0.32`` blocks a frame. The session runs th
+       5 these steps per 20 Hz tick, so the game feels the same on the pa
+       6 it did in the browser. Collision checks the box's true edges aga
+       7 the front layer, x first and then y, so a corner never snags.
+       8 
+          --
+         ckets
+     … +335 lines (ctrl+o to expand)
+
+⏺ Write(tests/test_microcraft_player.py)
+  ⎿  Wrote 334 lines to tests/test_microcraft_player.py
+       1 """Walking, jumping, swimming, digging, building and picking thi
+         ngs up."""
+       2 
+       3 from __future__ import annotations
+       4 
+       6 
+       7 from pi_menu.microcraft import player as phys
+       8 from pi_menu.microcraft import tiles
+       9 from pi_menu.microcraft.inventory import Inventory, Stack
+      10 from pi_menu.microcraft.noise import WORLD_RADIUS
+     … +345 lines (ctrl+o to expand)
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Two test failures found: one wall too short after floor removal, and one
+  comparing a wrapped float to an exact literal. I'll fix these tests and commit
+  Task 7. · summarized
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Write(src/pi_menu/microcraft/render.py)
+  ⎿  Wrote 330 lines to src/pi_menu/microcraft/render.py
+       1 """Painting the world and every screen onto the 16x16 canvas.
+       3 The view is eight blocks square at two pixels a block. The backg
+         round
+         it
+         ves,
+       6 clouds, the player, rain, lightning, the crack on whatever is be
+       7 broken, dropped items and the hotbar along the bottom row.
+       8 
+          hit
+         reason
+     … +360 lines (ctrl+o to expand)
+
+❯ A couple of things:                                                           
+  - the game, once ported to the pi-menu framework, will be running on the      
+  LED/LCD display of the Stellar Unicorn                                        
+  - keep in mind the color / contrast range of the Stellar Unicorn and adjust   
+  colors so that they are still visible and distinguishable from neighbors.     
+
+⏺ The LED display will wash out dark/low-contrast tiles like stone, dirt, coal
+  ore, and the dimmed background, so I'll create a brighter, higher-contrast
+  palette that preserves each tile's two-tone look while keeping neighbors
+  distinguishable, and wire all sprite lookups through it. · summarized
+
+⏺ Write(src/pi_menu/microcraft/palette.py)
+  ⎿  Wrote 167 lines to src/pi_menu/microcraft/palette.py
+       1 """The art, recoloured for LEDs.
+       3 The HTML's sprites were drawn for a bright screen at many pixels
+       4 block: stone is a 51-grey, dirt a 56-brown, coal ore grey with 2
+         3-grey
+         nd dim
+         pixels
+         e same
+       8 grey. So every block and item gets its own 2x2 pattern here: the
+       9 two-tone shape as the original where it has one, but lifted well
+      10 the LEDs' floor and given a hue no neighbour shares.
+     … +181 lines (ctrl+o to expand)
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Write(src/pi_menu/microcraft/demo.py)
+  ⎿  Wrote 112 lines to src/pi_menu/microcraft/demo.py
+      1 """The camera tour behind the opening screen.
+      3 Twelve shots in a fixed running order: steady pans over a few dis
+        tinct
+      4 stretches of the loop at treetop or ground height, a couple of di
+      5 underground, flights through the cloud deck near where the player
+         will
+        in
+      7 nine seconds. Each shot pins the time of day, so the tour shows o
+        ff
+      9 """
+     … +111 lines (ctrl+o to expand)
+
+  Ran 2 shell commands (ctrl+o to expand)
+
+⏺ Write(tests/test_microcraft_palette.py)
+  ⎿  Wrote 98 lines to tests/test_microcraft_palette.py
+      1 """Every tile lights up on the LEDs, and no two neighbours look a
+        like."""
+      2 
+      3 from __future__ import annotations
+      4 
+      5 import itertools
+      6 
+      7 import pytest
+      8 
+      9 from pi_menu.microcraft import palette, sprites, tiles
+     … +105 lines (ctrl+o to expand)
+
+⏺ Write(tests/test_microcraft_render.py)
+  ⎿  Wrote 215 lines to tests/test_microcraft_render.py
+       1 """What actually reaches the LEDs for the world and each screen.
+         """
+       2 
+       3 from __future__ import annotations
+       4 
+       6 
+       7 import pytest
+       8 
+       9 from pi_menu.display.protocol import FRAME_BYTES
+      10 from pi_menu.microcraft import palette, render, sky, tiles
+     … +238 lines (ctrl+o to expand)
+
+  Ran 3 shell commands (ctrl+o to expand)
+
+⏺ The test clause was too strict since copper and iron ingots are full tiles in
+  the original too. I'll fix that while writing the session state machine, the
+  Tk app, and the session tests, starting with the two independent pieces. 
+  · summarized
+
+  Ran 1 shell command (ctrl+o to expand)
+
+⏺ Write(src/pi_menu/microcraft/session.py)
+  ⎿  Wrote 401 lines to src/pi_menu/microcraft/session.py
+       1 """Screens, keys, the clock, and what the panel shows at any mom
+       2 
+         he
+       4 world, the inventory, the bench and the table. One cursor moves 
+       5 all of them, one button acts on whatever is under it, and the wo
+       6 keeps simulating behind the opening screen but stands still whil
+       7 inventory screen is open, as in the HTML.
+       8 
+         takes
+         tick
+     … +437 lines (ctrl+o to expand)
+
+⏺ Write(tests/test_microcraft_session.py)
+  ⎿  Wrote 377 lines to tests/test_microcraft_session.py
+       1 """Every screen, every way between them, and a frame for each.""
+         "
+       2 
+       3 from __future__ import annotations
+       4 
+       6 
+       7 import pytest
+       8 
+       9 from pi_menu.display.protocol import FRAME_BYTES, pixel_offset
+      10 from pi_menu.microcraft import render, tiles
+     … +395 lines (ctrl+o to expand)
+
+⏺ Write(src/pi_menu/microcraft/app.py)
+  ⎿  Wrote 257 lines to src/pi_menu/microcraft/app.py
+       1 """Tk front-end for MicroCraft.
+       3 As with the platform game, the window is not the game: everythin
+         g the
+       4 player looks at is on the LED panel. This holds the keyboard, ru
+       5 20 Hz clock, and reports in words what the panel has no room for
+          --
+         ay,
+       7 and whether the frames are reaching a real panel at all.
+       8 """
+      10 from __future__ import annotations
+     … +274 lines (ctrl+o to expand)
+
+  Read 1 file, ran 12 shell commands (ctrl+o to expand)
+
+⏺ The frames check out — sunrise, block sampler row, and readable UI screens all
+  look correct. I'll fix two small issues (camera rounding and a stray import),
+  check off the plan items, and save a memory note on the port's design
+  choices. · summarized
+
+  Ran 3 shell commands, wrote 1 memory (ctrl+o to expand)
+
+⏺ The port is done and committed. MicroCraft now runs as pi-microcraft under the
+  Pi Menu framework, with the full test suite green.
+
+  What was built
+
+  The HTML's 3,900 lines of JavaScript became a pi_menu.microcraft package of
+  fourteen modules, laid out like the platformer: pure Python for the world and
+  rules, a Session state machine that pushes frames to a sink, and a thin Tk
+  shell that holds the keyboard and runs the 20 Hz clock. Everything in the
+  original carried across: the looping two-layer world generated in chunks,
+  water and lava that flow and taper, fire and baked clay, grass that spreads
+  and dies, the forty-minute day with time zones and the real moon's phase
+  (eclipse included), particle-swarm clouds with rain, lightning and
+  depth-driven waves, the physics, the inventory with splits and merges, both
+  crafting grids and all recipes, buckets, the stick-lighter, item drops, and
+  the twelve-shot demo tour behind the opening screen.
+
+  Your mid-port note on the LEDs is addressed in a new palette.py. The browser
+  art was too dark and too grey for the panel, so every block and item keeps its
+  two-tone shape but is lifted above the LED floor and given a hue no neighbour
+  shares: ore is grey with flecks of its metal, the furnace has a glowing
+  mouth, clay leans blue. A test asserts every pair of blocks stays apart by a
+  colour distance, and I rendered frames to PNG to check by eye.
+
+  Deliberate deviations, all recorded in the plan document:
+  - Simulations scan a 65×65 box around the player rather than full 1,250-row
+    columns, which Python cannot afford.
+  - Cloud particles only animate near the camera. Every cloud still drifts,
+    covers and rains.
+  - A fixed 20 Hz tick with three 60 Hz physics substeps, so the feel matches
+    the browser.
+  - Esc from the world returns to the opening screen. The HTML had no way back.
+  - A --seed flag for repeatable worlds.
+
+  Verification
+
+  ┌─────────────────────┬───────────────────────────────────────────────────┐
+  │        Check        │                      Result                       │
+  ├─────────────────────┼───────────────────────────────────────────────────┤
+  │ Full suite          │ 914 passed, 1 skipped, plus the 565 level-solver  │
+  │                     │ tests                                             │
+  ├─────────────────────┼───────────────────────────────────────────────────┤
+  │ New tests           │ 11 files, about 2,500 lines                       │
+  ├─────────────────────┼───────────────────────────────────────────────────┤
+  │ World tick with     │ 1 to 3 ms on this Mac                             │
+  │ frame               │                                                   │
+  ├─────────────────────┼───────────────────────────────────────────────────┤
+  │ Fresh chunk         │ 14 ms                                             │
+  └─────────────────────┴───────────────────────────────────────────────────┘
+
+  The commits are eleven logical units on main, from the plan through
+  registration. The plan lives at
+  docs/superpowers/plans/2026-09-09-microcraft.md with checkboxes ticked and
+  measured timings added.
+
+  Not done, and why
+
+  - The Tk window has not been opened: this Mac has no _tkinter, and no panel.
+    The session, renderer and argument parser are exercised by tests, but the
+    first real run should be on the Pi. Run pi-microcraft --backend term first
+    if the panel is dark.
+  - The three HTML files at the repo root are yours and were left uncommitted:
+    the reference copy shows as modified, and two dated copies are untracked.
+  - No persistence, matching the HTML. Adding a save would be a natural next
+    step if you want worlds to survive a restart.
+
+⏺ Ran 4 stop hooks (ctrl+o to expand)
+  ⎿  Stop hook error: AUTO-SAVE checkpoint. Save key topics, decisions,
+  quotes, and code from this session to your memory system. Organize
+  into appropriate categories. Use verbatim quotes where possible.
+  Continue conversation after saving.
+
+  Read 1 file, wrote 1 memory (ctrl+o to expand)
+
+⏺ Memory saved. Two notes now cover this session: the MicroCraft port's
+  deliberate design choices and file layout, and your guidance on designing
+  colours for the Stellar Unicorn's LED range, quoted verbatim so future work on
+  the panel starts from it.
+
+  The port itself is complete and committed as described above. Nothing is
+  pending on my side.
+
+✻ Cooked for 38m 17s · done 4:44 PM
+
+※ recap: Goal was porting the MicroCraft HTML game into pi-menu as pi-microcraft, which is done, committed, and passing all 914 tests with an LED-tuned palette. Next action: run it on the Pi to check the panel for real. (disable recaps in /config)
