@@ -318,6 +318,12 @@ class World:
     def chunks_loaded(self) -> int:
         return len(self._chunks)
 
+    def column(self, layer: int, x: int) -> bytearray:
+        """The whole column at x, for code that scans many rows at once."""
+        wx = int(wrap_x(x))
+        index = wx // CHUNK_W
+        return self.chunk(layer, index)[wx - index * CHUNK_W]
+
     def get(self, layer: int, x: int, y: int) -> int:
         """The block at a cell; sky above the world, stone below it."""
         if y < 0:
