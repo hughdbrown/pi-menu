@@ -169,28 +169,19 @@ CRAFT_BUTTON = ((110, 110, 125), (140, 140, 155)), ((140, 140, 155), (110, 110, 
 
 UI_BG_COLOUR = UI_SHEET[0][UI_BG_X]
 
-#: Empty-slot backgrounds. At two LEDs a slot, eight white slots in a row
-#: read as one white bar, so each slot takes a hue from its position on the
-#: panel and no two slots that touch, sideways or up and down, share one.
-SLOT_HUES = (
-    (255, 170, 170),  # rose
-    (160, 210, 255),  # sky
-    (180, 255, 170),  # mint
-    (255, 225, 140),  # amber
-)
+#: Empty-slot backgrounds. Black: the slot reads as a hole in the grey
+#: panel, and whatever sits in it is the only thing lit.
+SLOT_COLOUR = (0, 0, 0)
 
 
 def slot_colour(dx: int, dy: int):
-    """The background hue of the slot whose top-left LED is ``(dx, dy)``."""
-    return SLOT_HUES[(dx // 2 + dy // 2) % len(SLOT_HUES)]
+    """The background colour of the slot whose top-left LED is ``(dx, dy)``."""
+    return SLOT_COLOUR
 
 
 def slot_tile(dx: int, dy: int):
-    """The 2x2 empty-slot pattern for the slot at ``(dx, dy)``: its hue
-    with the top-right LED bevelled darker, as the white original was."""
-    base = slot_colour(dx, dy)
-    bevel = tuple(int(c * 0.75) for c in base)
-    return ((base, bevel), (base, base))
+    """The 2x2 empty-slot pattern for the slot at ``(dx, dy)``: solid black."""
+    return ((SLOT_COLOUR, SLOT_COLOUR), (SLOT_COLOUR, SLOT_COLOUR))
 
 
 def tile_art(kind: int):

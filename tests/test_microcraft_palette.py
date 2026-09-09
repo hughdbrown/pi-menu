@@ -101,28 +101,9 @@ def test_average_colours_follow_the_panel_palette():
     assert max(palette.AVERAGE_COLOUR[tiles.STONE]) >= 100
 
 
-def test_slot_hues_are_lit_and_told_apart_on_the_panel():
-    for hue in palette.SLOT_HUES:
-        assert min(hue) >= palette.FLOOR
-        assert max(hue) >= 200
-    for a in palette.SLOT_HUES:
-        for b in palette.SLOT_HUES:
-            if a is not b:
-                assert max(abs(x - y) for x, y in zip(a, b)) >= 40
-
-
-def test_touching_slots_never_share_a_hue():
+def test_every_empty_slot_is_solid_black():
+    assert palette.SLOT_COLOUR == (0, 0, 0)
     for dy in range(0, 16, 2):
         for dx in range(0, 16, 2):
-            here = palette.slot_colour(dx, dy)
-            if dx + 2 < 16:
-                assert palette.slot_colour(dx + 2, dy) != here
-            if dy + 2 < 16:
-                assert palette.slot_colour(dx, dy + 2) != here
-
-
-def test_a_slot_tile_is_its_hue_with_a_darker_bevel_top_right():
-    (tl, tr), (bl, br) = palette.slot_tile(4, 14)
-    base = palette.slot_colour(4, 14)
-    assert tl == bl == br == base
-    assert all(c < b for c, b in zip(tr, base)) and min(tr) >= palette.FLOOR
+            assert palette.slot_colour(dx, dy) == (0, 0, 0)
+            assert palette.slot_tile(dx, dy) == (((0, 0, 0), (0, 0, 0)), ((0, 0, 0), (0, 0, 0)))
