@@ -95,9 +95,14 @@
     display: none;
     width: 100%;
     max-width: 384px;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .touch-row {
+    display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
   }
   .dpad {
     display: flex;
@@ -130,12 +135,58 @@
     letter-spacing: 0.5px;
   }
   .tbtn.mode.place { color: var(--accent2); border-color: var(--accent2); }
+  .tbtn.drop { color: var(--accent2); border-color: var(--accent2); }
+
+  /* cursor d-pad: moves the white pixel reticle */
+  .cursor-dpad {
+    display: grid;
+    grid-template-columns: repeat(3, 34px);
+    grid-template-rows: repeat(3, 34px);
+    gap: 4px;
+  }
+  .tbtn.small {
+    width: 34px;
+    height: 34px;
+    font-size: 13px;
+    border-radius: 6px;
+  }
+  .cpad-spacer { width: 34px; height: 34px; }
+
+  /* interact (place) / break, both act on whatever's under the cursor */
+  .action-buttons {
+    display: flex;
+    gap: 8px;
+  }
+  .tbtn.action {
+    width: 72px;
+    height: 56px;
+    font-size: 12px;
+    letter-spacing: 0.5px;
+  }
+  .tbtn.action.place { color: var(--accent); border-color: var(--accent); }
+  .tbtn.action.break { color: var(--accent2); border-color: var(--accent2); }
+
+  /* hotbar quick-select, mirrors the 1-8 number keys */
+  .hotbar-select {
+    display: flex;
+    justify-content: space-between;
+    gap: 4px;
+  }
+  .tbtn.hotbtn {
+    flex: 1;
+    width: auto;
+    height: 32px;
+    font-size: 12px;
+    border-radius: 6px;
+  }
+  .tbtn.hotbtn.active { color: var(--accent2); border-color: var(--accent2); }
 
   @media (hover: none) and (pointer: coarse) {
     .touch-controls { display: flex; }
     .help.desktop-only { display: none; }
     .help.mobile-only { display: block; }
   }
+
 </style>
 </head>
 <body>
@@ -152,51 +203,343 @@
   </div>
 
   <div class="touch-controls">
-    <div class="dpad">
-      <div class="tbtn" id="btnLeft">◀</div>
-      <div class="tbtn" id="btnRight">▶</div>
+    <div class="touch-row">
+      <div class="dpad">
+        <div class="tbtn" id="btnLeft">◀</div>
+        <div class="tbtn" id="btnRight">▶</div>
+      </div>
+      <div class="tbtn jump" id="btnJump">JUMP</div>
+      <div class="tbtn mode" id="btnLayer">FRONT</div>
+      <div class="tbtn mode drop" id="btnDrop">DROP</div>
     </div>
-    <div class="tbtn mode" id="btnMode">MINE</div>
-    <div class="tbtn mode" id="btnLayer">FRONT</div>
-    <div class="tbtn jump" id="btnJump">JUMP</div>
+    <div class="touch-row">
+      <div class="cursor-dpad">
+        <div class="cpad-spacer"></div><div class="tbtn small" id="curUp">▲</div><div class="cpad-spacer"></div>
+        <div class="tbtn small" id="curLeft">◀</div><div class="cpad-spacer"></div><div class="tbtn small" id="curRight">▶</div>
+        <div class="cpad-spacer"></div><div class="tbtn small" id="curDown">▼</div><div class="cpad-spacer"></div>
+      </div>
+      <div class="action-buttons">
+        <div class="tbtn action place" id="btnPlace">PLACE</div>
+        <div class="tbtn action break" id="btnBreak">BREAK</div>
+      </div>
+    </div>
+    <div class="hotbar-select" id="hotbarSelect">
+      <div class="tbtn hotbtn" data-slot="0">1</div>
+      <div class="tbtn hotbtn" data-slot="1">2</div>
+      <div class="tbtn hotbtn" data-slot="2">3</div>
+      <div class="tbtn hotbtn" data-slot="3">4</div>
+      <div class="tbtn hotbtn" data-slot="4">5</div>
+      <div class="tbtn hotbtn" data-slot="5">6</div>
+      <div class="tbtn hotbtn" data-slot="6">7</div>
+      <div class="tbtn hotbtn" data-slot="7">8</div>
+    </div>
   </div>
 
   <div class="help desktop-only">
     <b>W/A/S/D</b> move · <b>Space</b> jump · <b>L</b> toggle mining/placing between front and background layers<br>
-    <b>Arrow keys</b> move the white pixel cursor · <b>Enter</b> place/interact · <b>Backspace</b> break a block<br>
+    <b>Arrow keys</b> move the white pixel cursor · <b>Enter</b> place/interact · hold <b>Backspace</b> to break a block<br>
     <b>1-8</b> select hotbar slot · <b>E</b> or <b>[inventory]</b> to open/close your inventory
   </div>
   <div class="help mobile-only">
-    Use the <b>◀ ▶</b> buttons to move and <b>JUMP</b> to jump<br>
-    Tap the world to <b>mine</b> · toggle <b>MINE/PLACE</b> then tap to build<br>
-    Tap <b>FRONT/BACK</b> to switch which layer you're mining or placing on<br>
-    Tap <b>[inventory]</b> to manage your items
+    Use the <b>◀ ▶</b> buttons to move and <b>JUMP</b> to jump · <b>FRONT/BACK</b> switches which layer you're targeting<br>
+    Use the small <b>▲▼◀▶</b> pad to move the white pixel cursor<br>
+    <b>PLACE</b> places/interacts · hold <b>BREAK</b> until it breaks, both target the cursor<br>
+    Tap <b>1-8</b> to pick a hotbar slot · tap <b>[inventory]</b> to manage your items
   </div>
 </div>
 
 <script>
 (() => {
-  const VIEW = 16;          // logical screen pixels (16x16)
-  const BLOCK = 2;          // each block is 2x2 px
-  const COLS = VIEW / BLOCK; // 8 blocks wide on screen
-  const ROWS = VIEW / BLOCK; // 8 blocks tall on screen
+  const VIEW = 16;           // logical screen pixels (fixed 16x16)
+  const BLOCK = 2;           // each block is 2x2 px
+  const COLS = VIEW / BLOCK; // blocks wide on screen
+  const ROWS = VIEW / BLOCK; // blocks tall on screen
+
+  // a fresh random seed every time the page loads, so the whole world --
+  // terrain, mountains, oceans, lakes, trees -- is different each session,
+  // and the player spawns somewhere new rather than always at the same
+  // fixed patch of land
+  const WORLD_SEED = Math.floor(Math.random() * 2147483647);
 
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
   ctx.imageSmoothingEnabled = false;
 
   // ---- world ----
-  const WORLD_W = 200;
-  const WORLD_H = 28;
+  const WORLD_H = 1250; // underground now runs 1000 blocks below the surface
+  const SURFACE_BASE = 250; // ground sits near the bottom of the world; everything above this is sky
+
+  // ---- mountain vegetation lines ---------------------------------------
+  // defined here (in terms of SURFACE_BASE) rather than off the cloud
+  // constants below, since those aren't declared until later and both
+  // frontHeightAt/treeInCell/genLayerChunk need this earlier. CLOUD_MAX_Y
+  // itself is SURFACE_BASE - 30 -- keep this in sync with that if it moves.
+  // Lower y = higher up, so "line" constants are the smallest (highest)
+  // row a column's surface can be at before that feature stops appearing.
+  const GRASS_LINE_Y = (SURFACE_BASE - 30) + 8; // grass gives way to bare stone a little below the cloud band
+  const TREE_LINE_Y = GRASS_LINE_Y + 10; // trees stop even earlier, well below the bare-rock summit
+
+  // ---- the world is a bounded loop, not an infinite plane -----------------
+  // Walking WORLD_PERIOD blocks in one direction brings you back to where
+  // you started. It's not a literal sphere (no curvature, no poles -- you'd
+  // never be able to tell just by looking at it), just a horizontal line
+  // that wraps end to end, which is enough to *feel* like walking around a
+  // small planet. wrapX() is the single place that folds any x (however far
+  // out, e.g. a spawn search or a background-demo camera position) back into
+  // the one canonical copy of the world; every world-generation function
+  // below calls it on its own input, so it doesn't matter whether callers
+  // pass in a wrapped or raw coordinate -- the terrain, oceans, chunks, and
+  // block storage all agree on the same finite, looping world either way.
+  const WORLD_RADIUS = 1000;
+  const WORLD_PERIOD = WORLD_RADIUS * 2;
+  function wrapX(x) {
+    return (((x + WORLD_RADIUS) % WORLD_PERIOD) + WORLD_PERIOD) % WORLD_PERIOD - WORLD_RADIUS;
+  }
+
+  // ---- day / night cycle ---------------------------------------------
+  // A full sunrise-to-sunrise cycle takes DAY_LENGTH_MS of real time for a
+  // player who stays put. Because the world loops back on itself after
+  // WORLD_PERIOD blocks (see above), it behaves like a small planet -- so a
+  // player's position around that loop shifts their local clock the same
+  // way timezones do on Earth. Someone on the far side of the loop at the
+  // same real-world instant can be experiencing roughly the opposite time
+  // of day.
+  const DAY_LENGTH_MS = 40 * 60 * 1000; // 40 minutes: full day + full night
+  let dayCycleStart = performance.now();
+
+  // local time-of-day fraction for a given world x: 0 = midnight,
+  // 0.25 = sunrise, 0.5 = noon, 0.75 = sunset, back to 1 = midnight.
+  function localDayFrac(worldX) {
+    const elapsed = performance.now() - dayCycleStart;
+    const base = (elapsed / DAY_LENGTH_MS) % 1;
+    const zone = (wrapX(worldX) + WORLD_RADIUS) / WORLD_PERIOD; // 0..1 "timezone" around the loop
+    return ((base + zone) % 1 + 1) % 1;
+  }
+
+  // ---- moon phase -------------------------------------------------------
+  // Rather than an arbitrary in-game cycle, the moon tracks the real
+  // synodic month against a known historical new moon, so the phase shown
+  // always matches the actual moon phase outside right now.
+  const SYNODIC_MONTH_DAYS = 29.530588853;
+  const KNOWN_NEW_MOON_MS = Date.UTC(2000, 0, 6, 18, 14); // a real new moon reference point
+  function moonPhaseFrac() {
+    const days = (Date.now() - KNOWN_NEW_MOON_MS) / 86400000;
+    return ((days % SYNODIC_MONTH_DAYS) / SYNODIC_MONTH_DAYS + 1) % 1; // 0 = new, 0.5 = full
+  }
+  function moonIllumination(mp) { return (1 - Math.cos(mp * Math.PI * 2)) / 2; } // 0..1 lit fraction
+
+  // ---- sky colour across the day: [frac, topColor, bottomColor] stops,
+  // interpolated and looped. Dawn/dusk stops swing through purple, red and
+  // orange near the horizon while staying darker/cooler up top.
+  const SKY_KEYFRAMES = [
+    [0.00, '#03040a', '#050814'],
+    [0.20, '#0a0c1c', '#141633'],
+    [0.24, '#241a3d', '#3d2a52'],
+    [0.27, '#4a2c52', '#c65a3a'],
+    [0.32, '#5f77a8', '#e8935a'],
+    [0.40, '#5c94fc', '#8bb7ff'],
+    [0.50, '#4f8bfa', '#7fadfb'],
+    [0.60, '#5c94fc', '#8bb7ff'],
+    [0.68, '#5f77a8', '#e8935a'],
+    [0.73, '#4a2c52', '#c65a3a'],
+    [0.76, '#241a3d', '#3d2a52'],
+    [0.80, '#0a0c1c', '#141633'],
+    [1.00, '#03040a', '#050814'],
+  ];
+  function lerpColor(a, b, t) {
+    const ah = parseInt(a.slice(1), 16), bh = parseInt(b.slice(1), 16);
+    const ar = (ah >> 16) & 255, ag = (ah >> 8) & 255, ab = ah & 255;
+    const br = (bh >> 16) & 255, bg = (bh >> 8) & 255, bb = bh & 255;
+    const r = Math.round(ar + (br - ar) * t);
+    const g = Math.round(ag + (bg - ag) * t);
+    const b2 = Math.round(ab + (bb - ab) * t);
+    return `rgb(${r},${g},${b2})`;
+  }
+  function skyColorsAt(frac) {
+    for (let i = 0; i < SKY_KEYFRAMES.length - 1; i++) {
+      const [t0, top0, bot0] = SKY_KEYFRAMES[i];
+      const [t1, top1, bot1] = SKY_KEYFRAMES[i + 1];
+      if (frac >= t0 && frac <= t1) {
+        const t = (frac - t0) / (t1 - t0 || 1);
+        return { top: lerpColor(top0, top1, t), bottom: lerpColor(bot0, bot1, t) };
+      }
+    }
+    const last = SKY_KEYFRAMES[SKY_KEYFRAMES.length - 1];
+    return { top: last[1], bottom: last[2] };
+  }
+
+  // position along a simple sine arc across the 16x16 view; p runs 0..1
+  // from one horizon to the other, elevation peaks (1) at p=0.5 (zenith)
+  function positionOnArc(p) {
+    const x = p * (VIEW - 1);
+    const elevation = Math.sin(Math.max(0, Math.min(1, p)) * Math.PI);
+    const y = 1 + (1 - elevation) * (VIEW * 0.5 - 2);
+    return { x, y, elevation };
+  }
+
+  // fixed screen-space starfield -- positions chosen once at load, each
+  // twinkling independently. Always kept dimmer than the moon.
+  const STAR_COUNT = 18;
+  const stars = Array.from({ length: STAR_COUNT }, () => ({
+    x: Math.floor(Math.random() * VIEW),
+    y: Math.floor(Math.random() * (VIEW * 0.65)),
+    phase: Math.random() * Math.PI * 2,
+    speed: 0.5 + Math.random() * 1.5,
+  }));
+
+  // the 4 non-corner offsets of a 3x3 "plus" disc, used for both the moon
+  // (phase-shaded) and a total solar eclipse (see MOON_LIT_COLOR note)
+  const MOON_LIT_COLOR = '#ffffff';
+  const ECLIPSE_CORONA_COLOR = '#fffbec';
+  const MOON_DARK_COLOR = '#404040';
+  const PLUS_OFFSETS = { top: [0, -1], left: [-1, 0], right: [1, 0], bottom: [0, 1], center: [0, 0] };
+  // center goes second in both orders so every additional lit pixel is
+  // always orthogonally touching an already-lit one -- otherwise a
+  // partial phase (e.g. right+top, which are only diagonal neighbors)
+  // reads as two separate equally-bright dots instead of one crescent
+  const MOON_WAX_ORDER = ['right', 'center', 'top', 'bottom', 'left'];
+  const MOON_WANE_ORDER = ['left', 'center', 'top', 'bottom', 'right'];
+
+  function drawMoonDisc(cx, cy) {
+    const mp = moonPhaseFrac();
+    const illum = moonIllumination(mp);
+    const litCount = Math.round(illum * 5);
+    const order = mp < 0.5 ? MOON_WAX_ORDER : MOON_WANE_ORDER;
+    const litSet = new Set(order.slice(0, litCount));
+    ctx.fillStyle = MOON_LIT_COLOR;
+    for (const key of Object.keys(PLUS_OFFSETS)) {
+      if (!litSet.has(key)) continue;
+      const [ox, oy] = PLUS_OFFSETS[key];
+      ctx.fillRect(Math.round(cx) + ox, Math.round(cy) + oy, 1, 1);
+    }
+  }
+
+  // a total eclipse: the moon's dark disc sits dead center over the sun,
+  // its corona (the sun peeking out around the edges) forming the same
+  // plus shape -- pitch black stays fully transparent
+  function drawEclipse(cx, cy) {
+    ctx.fillStyle = ECLIPSE_CORONA_COLOR;
+    for (const key of ['top', 'left', 'right', 'bottom']) {
+      const [ox, oy] = PLUS_OFFSETS[key];
+      ctx.fillRect(Math.round(cx) + ox, Math.round(cy) + oy, 1, 1);
+    }
+    ctx.fillStyle = MOON_DARK_COLOR;
+    ctx.fillRect(Math.round(cx), Math.round(cy), 1, 1);
+  }
+
+  // how dark the sky gradient gets pulled during totality -- 0 would leave
+  // the sky untouched, 1 would flatten it completely to ECLIPSE_SKY_COLOR
+  const ECLIPSE_SKY_DARKEN = 0.82;
+  const ECLIPSE_SKY_COLOR = '#0c0e1a';
+
+  // draws the sky gradient, sun/moon arc, stars and eclipse for the given
+  // world x (used to derive the local time-of-day / timezone)
+  function drawSkyAndCelestials(worldXRef, forcedFrac, celestialVisibility, forcedMoonPhase) {
+    const frac = (forcedFrac != null) ? forcedFrac : localDayFrac(worldXRef);
+    const visibility = celestialVisibility == null ? 1 : celestialVisibility;
+    const isDay = frac > 0.25 && frac < 0.75;
+    const mp = forcedMoonPhase != null ? forcedMoonPhase : moonPhaseFrac();
+    // totality: same window the sun disc/eclipse graphic itself uses below
+    // (sun disc visible + moon close enough to sit right in front of it)
+    const sunVisible = isDay && frac > 0.32 && frac < 0.68;
+    const nearNewMoon = mp < 0.03 || mp > 0.97;
+    const inEclipse = isDay && sunVisible && nearNewMoon;
+
+    let { top, bottom } = skyColorsAt(frac);
+    if (inEclipse) {
+      top = lerpColor(top, ECLIPSE_SKY_COLOR, ECLIPSE_SKY_DARKEN);
+      bottom = lerpColor(bottom, ECLIPSE_SKY_COLOR, ECLIPSE_SKY_DARKEN);
+    }
+    const grad = ctx.createLinearGradient(0, 0, 0, VIEW);
+    grad.addColorStop(0, top);
+    grad.addColorStop(1, bottom);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, VIEW, VIEW);
+
+    if (visibility <= 0.01) return; // fully socked in -- sun/moon/stars stay hidden behind the cloud deck
+
+    const prevAlpha = ctx.globalAlpha;
+    ctx.globalAlpha = prevAlpha * visibility;
+
+    // the moon's own arc position, offset from the sun's by its phase: a
+    // full moon (mp=0.5) sits exactly opposite the sun -- up all night,
+    // peaking at midnight -- while a new moon (mp=0) tracks right along
+    // with the sun -- up all day, invisible right beside it (or eclipsing
+    // it). Quarter moons land halfway between, up for half a day and half
+    // a night, which is what lets a real daytime moon happen at all.
+    const moonFrac = (frac + mp) % 1;
+    const moonUp = moonFrac > 0.25 && moonFrac < 0.75;
+
+    if (isDay) {
+      const p = (frac - 0.25) / 0.5;
+      const { x, y, elevation } = positionOnArc(p);
+      const warmth = 1 - elevation; // 0 at zenith, 1 near the horizon -- still used for the ambient glow
+
+      // warm horizon glow in the direction of sunrise/sunset, independent
+      // of whether the sun disc itself is on screen yet
+      if (warmth > 0.15) {
+        const glowAlpha = Math.min(0.55, (warmth - 0.15) * 0.9);
+        const glow = ctx.createRadialGradient(x, y, 0, x, y, 9);
+        glow.addColorStop(0, `rgba(255,90,50,${glowAlpha.toFixed(2)})`);
+        glow.addColorStop(1, 'rgba(255,90,50,0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(0, 0, VIEW, VIEW);
+      }
+
+      // the sun disc itself stays off-screen for the entire sunrise/sunset
+      // transition (matching the SKY_KEYFRAMES warm-color window above) and
+      // only appears once it's fully risen, at a fixed bright whitish
+      // yellow -- no dimming or color shift while it's up.
+      if (sunVisible) {
+        if (nearNewMoon) {
+          drawEclipse(x, y);
+        } else {
+          ctx.fillStyle = '#fffde0';
+          ctx.fillRect(Math.round(x), Math.round(y), 1, 1);
+        }
+      }
+
+      // a real daytime moon: faded almost into the sky color, the way it
+      // looks washed out against blue sky in real life. Skipped near new
+      // moon since that's the eclipse case above, and skipped once the sun
+      // itself is up close by (avoids a faded ghost sitting on the sun).
+      if (moonUp && !nearNewMoon) {
+        const pMoon = (moonFrac - 0.25) / 0.5;
+        const moonPos = positionOnArc(pMoon);
+        const tooCloseToSun = sunVisible && Math.abs(moonPos.x - x) < 2 && Math.abs(moonPos.y - y) < 2;
+        if (!tooCloseToSun) {
+          const daySunAlpha = prevAlpha * visibility;
+          ctx.globalAlpha = daySunAlpha * 0.32;
+          drawMoonDisc(moonPos.x, moonPos.y);
+          ctx.globalAlpha = daySunAlpha;
+        }
+      }
+    } else {
+      // stars, always dim relative to the moon
+      const twinkleT = performance.now() / 1000;
+      for (const s of stars) {
+        const tw = 0.12 + 0.16 * (0.5 + 0.5 * Math.sin(twinkleT * s.speed + s.phase));
+        ctx.fillStyle = `rgba(255,255,255,${tw.toFixed(2)})`;
+        ctx.fillRect(s.x, s.y, 1, 1);
+      }
+      if (moonUp) {
+        const pMoon = (moonFrac - 0.25) / 0.5;
+        const { x, y } = positionOnArc(pMoon);
+        drawMoonDisc(x, y);
+      }
+    }
+    ctx.globalAlpha = prevAlpha;
+  }
 
   // ---- block asset sheet (16x16px, 2x2 tiles) ----
   // row0 (y=0): grass, dirt, stone, log, leaves, coal ore, iron ore, copper ore
-  // row1 (y=2): lava, water, wood planks, crafting table
-  // row2 (y=4): lava flow - down, taper1, taper2, taper3 (asset faces right; mirrored for left-flow)
-  // row3 (y=6): water flow - down, taper1, taper2, taper3 (asset faces right; mirrored for left-flow)
+  // row1 (y=2): lava, water, wood planks, crafting table, cobblestone, furnace, clay, sand
+  // row2 (y=4): brick
+  // (fluid flow tiles live in their own separate sheet -- see below)
   const SKY = 0, GRASS = 1, DIRT = 2, STONE = 3, WOOD = 4, LEAF = 5,
         COAL_ORE = 6, IRON_ORE = 7, COPPER_ORE = 8,
         LAVA = 9, WATER = 10, WOOD_PLANKS = 11, CRAFTING_TABLE = 12,
+        COBBLESTONE = 27, FURNACE = 28, CLAY = 29, SAND = 30, BRICK = 31,
         LAVA_FLOW_DOWN = 13, LAVA_FLOW_R1 = 14, LAVA_FLOW_R2 = 15, LAVA_FLOW_R3 = 16,
         LAVA_FLOW_L1 = 17, LAVA_FLOW_L2 = 18, LAVA_FLOW_L3 = 19,
         WATER_FLOW_DOWN = 20, WATER_FLOW_R1 = 21, WATER_FLOW_R2 = 22, WATER_FLOW_R3 = 23,
@@ -205,38 +548,62 @@
     [GRASS]: [0, 0], [DIRT]: [2, 0], [STONE]: [4, 0], [WOOD]: [6, 0], [LEAF]: [8, 0],
     [COAL_ORE]: [10, 0], [IRON_ORE]: [12, 0], [COPPER_ORE]: [14, 0],
     [LAVA]: [0, 2], [WATER]: [2, 2], [WOOD_PLANKS]: [4, 2], [CRAFTING_TABLE]: [6, 2],
-    [LAVA_FLOW_DOWN]: [0, 4], [LAVA_FLOW_R1]: [2, 4], [LAVA_FLOW_R2]: [4, 4], [LAVA_FLOW_R3]: [6, 4],
-    [LAVA_FLOW_L1]: [2, 4], [LAVA_FLOW_L2]: [4, 4], [LAVA_FLOW_L3]: [6, 4], // mirrored at draw time
-    [WATER_FLOW_DOWN]: [0, 6], [WATER_FLOW_R1]: [2, 6], [WATER_FLOW_R2]: [4, 6], [WATER_FLOW_R3]: [6, 6],
-    [WATER_FLOW_L1]: [2, 6], [WATER_FLOW_L2]: [4, 6], [WATER_FLOW_L3]: [6, 6], // mirrored at draw time
+    [COBBLESTONE]: [8, 2], [FURNACE]: [10, 2], [CLAY]: [12, 2], [SAND]: [14, 2],
+    [BRICK]: [0, 4],
   };
+  // ---- fluid flow asset sheet (8x4px, 2x2 tiles; separate from the block
+  // sheet so the two can be authored/updated independently) ----
+  // row0 (y=0): lava flow - down, taper1, taper2, taper3 (asset faces right; mirrored for left-flow)
+  // row1 (y=2): water flow - down, taper1, taper2, taper3 (asset faces right; mirrored for left-flow)
+  const FLUID_SHEET_POS = {
+    [LAVA_FLOW_DOWN]: [0, 0], [LAVA_FLOW_R1]: [2, 0], [LAVA_FLOW_R2]: [4, 0], [LAVA_FLOW_R3]: [6, 0],
+    [LAVA_FLOW_L1]: [2, 0], [LAVA_FLOW_L2]: [4, 0], [LAVA_FLOW_L3]: [6, 0], // mirrored at draw time
+    [WATER_FLOW_DOWN]: [0, 2], [WATER_FLOW_R1]: [2, 2], [WATER_FLOW_R2]: [4, 2], [WATER_FLOW_R3]: [6, 2],
+    [WATER_FLOW_L1]: [2, 2], [WATER_FLOW_L2]: [4, 2], [WATER_FLOW_L3]: [6, 2], // mirrored at draw time
+  };
+  // tile ids whose art actually lives in the fluid sheet, not the block sheet
+  const FLOW_TILES = new Set(Object.keys(FLUID_SHEET_POS).map(Number));
   // tile ids that should be drawn horizontally flipped (their SHEET_POS points at the
   // right-facing art; flowing left just mirrors that same sprite)
   const MIRRORED_TILES = new Set([LAVA_FLOW_L1, LAVA_FLOW_L2, LAVA_FLOW_L3, WATER_FLOW_L1, WATER_FLOW_L2, WATER_FLOW_L3]);
   // ---- item asset sheet (16x16px, 2x2 tiles; not blocks, can't be placed) ----
   // row0 (y=0): stick, iron sword, copper sword, iron pickaxe, copper pickaxe, iron axe, copper axe, coal
-  // row1 (y=2): copper, iron
+  // row1 (y=2): copper, iron, stone sword, stone pickaxe, stone axe, empty bucket, lava bucket, water bucket
   const STICK = 100, IRON_SWORD = 101, COPPER_SWORD = 102, IRON_PICKAXE = 103, COPPER_PICKAXE = 104,
-        IRON_AXE = 105, COPPER_AXE = 106, COAL = 107, COPPER = 108, IRON = 109;
+        IRON_AXE = 105, COPPER_AXE = 106, COAL = 107, COPPER = 108, IRON = 109,
+        STONE_SWORD = 110, STONE_PICKAXE = 111, STONE_AXE = 112,
+        BUCKET_EMPTY = 113, BUCKET_LAVA = 114, BUCKET_WATER = 115;
   const ITEM_SHEET_POS = {
     [STICK]: [0, 0], [IRON_SWORD]: [2, 0], [COPPER_SWORD]: [4, 0], [IRON_PICKAXE]: [6, 0],
     [COPPER_PICKAXE]: [8, 0], [IRON_AXE]: [10, 0], [COPPER_AXE]: [12, 0], [COAL]: [14, 0],
-    [COPPER]: [0, 2], [IRON]: [2, 2],
+    [COPPER]: [0, 2], [IRON]: [2, 2], [STONE_SWORD]: [4, 2], [STONE_PICKAXE]: [6, 2],
+    [STONE_AXE]: [8, 2], [BUCKET_EMPTY]: [10, 2], [BUCKET_LAVA]: [12, 2], [BUCKET_WATER]: [14, 2],
   };
   const ITEM_NAMES = {
     [STICK]: 'stick', [IRON_SWORD]: 'iron sword', [COPPER_SWORD]: 'copper sword',
     [IRON_PICKAXE]: 'iron pickaxe', [COPPER_PICKAXE]: 'copper pickaxe',
     [IRON_AXE]: 'iron axe', [COPPER_AXE]: 'copper axe', [COAL]: 'coal',
-    [COPPER]: 'copper', [IRON]: 'iron',
+    [COPPER]: 'copper', [IRON]: 'iron', [STONE_SWORD]: 'stone sword',
+    [STONE_PICKAXE]: 'stone pickaxe', [STONE_AXE]: 'stone axe',
+    [BUCKET_EMPTY]: 'bucket', [BUCKET_LAVA]: 'lava bucket', [BUCKET_WATER]: 'water bucket',
   };
   // ids that are items, not blocks: they live in the same inventory/hotbar/craft
   // slots as blocks, but can never be placed into the world
   const ITEMS = new Set(Object.keys(ITEM_SHEET_POS).map(Number));
+  // tools and buckets only ever stack to 1 -- everything else uses STACK_MAX
+  const TOOL_TYPES = new Set([
+    IRON_SWORD, COPPER_SWORD, STONE_SWORD,
+    IRON_PICKAXE, COPPER_PICKAXE, STONE_PICKAXE,
+    IRON_AXE, COPPER_AXE, STONE_AXE,
+  ]);
+  const BUCKET_TYPES = new Set([BUCKET_EMPTY, BUCKET_LAVA, BUCKET_WATER]);
+  const SINGLE_STACK_TYPES = new Set([...TOOL_TYPES, ...BUCKET_TYPES]);
 
   const NAMES = {
     [GRASS]: 'grass', [DIRT]: 'dirt', [STONE]: 'stone', [WOOD]: 'log', [LEAF]: 'leaves',
     [COAL_ORE]: 'coal ore', [IRON_ORE]: 'iron ore', [COPPER_ORE]: 'copper ore',
     [LAVA]: 'lava', [WATER]: 'water', [WOOD_PLANKS]: 'wood planks', [CRAFTING_TABLE]: 'crafting table',
+    [COBBLESTONE]: 'cobblestone', [FURNACE]: 'furnace', [CLAY]: 'clay', [SAND]: 'sand', [BRICK]: 'brick',
     ...ITEM_NAMES,
   };
   // fluids: not solid (you swim through them), not mineable, not a valid placement target
@@ -277,7 +644,7 @@
 
   const itemSheet = new Image();
   let itemSheetReady = false;
-  itemSheet.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAfUlEQVR4nO3LoQ1CMQCE4V8wAL5BYZuaJ5jgOTQWzQZVrIJiA7oBC9wCL2nSBRDVh0EB5vl+5nK5HACX494AkgxQc7Qkl1Jcc/T9tPvpACklM0/BwN+U5HkKrjn6e08pOYRgao7242pJ7r2blTbP5QXLje35QGtt7X8Yho83MXVH5IY74pwAAAAASUVORK5CYII=';
+  itemSheet.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAxklEQVR4nO3OIU7EUBjE8f8zmFZUYV4WQ2XzTC1Jk920CkEgweJIuEENGFwVkgsgK2u6WW6w4kNjKtZXPIUZBCEhwBH6M5PJmAHg7vxUAGYmgKktZGYahkFTW+jlevWnA4QQRF16Af+mmakuvaa20O89hCDvvdzUFjo5u+RtdUWe5yRJ4qqqEkCMkTRNiTHSdR3jONI0Dev7Da+POzYXx7jvO9nNMwBPD7ds9wdXl14fac5RfGe7P7i+75VlGfM88zMXi8WXT0NHX5FjjlDPAAAAAElFTkSuQmCC';
   itemSheet.onload = () => {
     itemSheetReady = true;
     const tmp = document.createElement('canvas');
@@ -303,7 +670,27 @@
 
   const sheet = new Image();
   let sheetReady = false;
-  sheet.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAA/UlEQVR4nO2QsUrDUBRAz5XAa6GJBlx1qYIgDyGkWxYtiG4ufoW/4A+4u4i7III4OTYUOggtb3Syg4PaDlpMQhVtfU6mCBLprGe50z33cGVlb8mWZhVy1kMphb+whlKK2+smfqVMa/UeHKj3tjHGEAQBUTemVV1nd97gzDWHDJJHfK/MIHnBG4/JsowcB3gGYwxaa6JuTLwYUS8ZTh40YnewhCAHDRCXq6NDRu8jTs/bvL59cHx5IxQwQwh0AHHBptz1E/pPQ4LaMlubumgXYFJAB+SCwms/4eQFIVgmMkKQ/d+FgtuwX/mkG1MXCF7bYtP8B99mUpta+M/f5BNULFf8cD/+hgAAAABJRU5ErkJggg==';
+  sheet.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAEKADAAQAAAABAAAAEAAAAAA0VXHyAAABF0lEQVQ4Ee2QMUvDQBTHfydXY6utKU6BIBkUSotL1Y8hiBn0O3R3dXYVFzdHpdDFXRAchDopCiJihihGUJMW2mhL4+Vw6OCSvX+49z/uvd+7xxOVxlIyM28gmm8YhsHAsMjlcnx/PlCey3NZewUJKzer+L6Pbdtsde9oFWs0qj7SvOjx1fmgXMor71NYGBHHMYI/KZgIDVuWpeFmocL2os/BrYVINklYA7F/rkKRq6NDhoMhp6028c+Ix55NGIaYpomUEtd1CYKAvd268nc1nIK5VkfBJF1ego7+ur6+TGl2mvbxs4bTJqk8z8NxHA1HUYg42agmaWLn7D61zJJPYT8zNA6ku9ITjD9muU9lKf6vdtIAJjuAX4HCXe7h3HUwAAAAAElFTkSuQmCC';
+
+  // fluid flow tiles (partial/tapered water & lava) live in their own small
+  // sheet, kept separate from the block sheet so each can be updated on its own
+  const fluidSheet = new Image();
+  let fluidSheetReady = false;
+  fluidSheet.onload = () => { fluidSheetReady = true; };
+  fluidSheet.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAECAYAAACzzX7wAAAATElEQVR4nGXMQRGDQBQE0TdVXEHNxkAUIAhRKMBAUJMV8DmFUDCXPnTXpGalYSeruG34SY3yjzWySIxbyUh1+vvxENOnVHdGV35fOQBXNhbspiFa0QAAAABJRU5ErkJggg==';
+
+  // fire animation (4 frames, 2x2px each) overlaid on blocks that are burning
+  const fireSheet = new Image();
+  let fireSheetReady = false;
+  fireSheet.onload = () => { fireSheetReady = true; };
+  fireSheet.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAACCAYAAABllJ3tAAAAMElEQVR4nEXGoRHAIBQFsLDXFyyEqGHCXgUDYR+md0QFZIhf5j20PKKwsdDxovBxAItIC1JNa529AAAAAElFTkSuQmCC';
+
+  // block-breaking crack overlay (4 frames, 2x2px each), scaled to how far
+  // along a held Backspace/BREAK press is on the targeted block
+  const breakSheet = new Image();
+  let breakSheetReady = false;
+  breakSheet.onload = () => { breakSheetReady = true; };
+  breakSheet.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAACCAYAAABllJ3tAAAAJ0lEQVR4nGNkQAIiIiL/GdAAE0xQRETk/5s3bxgZGBgYYDQDAwMDANBMCT8nHaCiAAAAAElFTkSuQmCC';
 
   // average color of each block's top-row pixels (for the hotbar) —
   // sampled from the sheet at each block's own [x,y] position
@@ -340,7 +727,7 @@
     const d = tctx.getImageData(UI_BG_X, 0, 1, 1).data;
     UI_BG_COLOR = `rgb(${d[0]},${d[1]},${d[2]})`;
   };
-  uiSheet.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAEKADAAQAAAABAAAAEAAAAAA0VXHyAAAAUElEQVQ4EWN0cXH5LykpybBo8WKG9QwMDO/mzAGSDAwpKSlgmhDBBFLw/PlzsOZAQqqxyDMCxf5jESdaCOwColVjUThqAAPDaBiMhgEoawAA4oQM0m+1sz0AAAAASUVORK5CYII=';
+  uiSheet.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAQUlEQVR4nO3MsQ2AQBADweUL+x7ozzVADVfZkiCRAp/eSg49qFaVggeYxCQCrzYA5pycwM73tlv63Vg5N9BAA08Xf2IdXNaeBmQAAAAASUVORK5CYII=';
 
   // ---- crafting-UI open button (2x2px icon, drawn directly left of the exit
   // button on the main inventory screen) ----
@@ -349,138 +736,266 @@
   craftBtnImg.onload = () => { craftBtnReady = true; };
   craftBtnImg.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAAqADAAQAAAABAAAAAgAAAADtGLyqAAAAGElEQVQIHWO0trb+LyAgwMAEIj58+MAAACU4BOQE/fWQAAAAAElFTkSuQmCC';
 
-  // ---- world gen: build one terrain layer from a given height map ----
-  function generateHeights() {
-    const heights = [];
-    let h = 6;
-    for (let x = 0; x < WORLD_W; x++) {
-      h += Math.round((Math.random() - 0.5) * 2);
-      h = Math.max(4, Math.min(8, h));
-      heights.push(h);
-    }
-    return heights;
+  // ---- deterministic hashing / value noise ----
+  // Everything about world generation is a pure function of world
+  // coordinates (never sequential Math.random() calls), so any chunk can be
+  // generated on demand, in any order, forwards or backwards, and always
+  // comes out the same -- that's what makes on-demand generation possible
+  // (the world is a bounded loop now, not infinite, but chunks still aren't
+  // all generated up front; see wrapX above and CHUNK_W below).
+  function hash2(x, y, seed) {
+    let h = Math.imul(x * 374761393 + y * 668265263 + (seed + WORLD_SEED) * 2246822519, 2654435761);
+    h = (h ^ (h >>> 15)) >>> 0;
+    h = Math.imul(h, 2246822519);
+    h = (h ^ (h >>> 13)) >>> 0;
+    return h / 4294967296;
+  }
+  function hash1(x, seed) { return hash2(x, 0, seed); }
+
+  function noise1D(x, seed, freq) {
+    const xf = x * freq;
+    const x0 = Math.floor(xf), x1 = x0 + 1;
+    const t = xf - x0;
+    const v0 = hash1(x0, seed), v1 = hash1(x1, seed);
+    const s = t * t * (3 - 2 * t); // smoothstep
+    return v0 + (v1 - v0) * s;
   }
 
-  // the background layer's terrain closely follows the front layer's, like the
-  // next slice of a 3D voxel world, but nudged by a block here and there so it
-  // isn't a perfect duplicate
-  function jitterHeights(baseHeights) {
-    return baseHeights.map(h => {
-      const j = Math.random() < 0.35 ? (Math.random() < 0.5 ? -1 : 1) : 0;
-      return Math.max(4, Math.min(8, h + j));
-    });
+  // ---- world gen: terrain height, per column, as a pure function of x ----
+  // several octaves of rolling hills/valleys (big slow undulation down to
+  // fine bumps) plus an occasional, much larger "mountain" feature layered
+  // on top -- sparse and sharp in the front layer (real mountains, tall
+  // enough to poke into the cloud band), gentler and more frequent in the
+  // back layer (just hills)
+  function terrainDetailAt(x) {
+    return noise1D(x, 1, 1 / 9) * 0.45 + noise1D(x, 2, 1 / 22) * 0.35 + noise1D(x, 12, 1 / 55) * 0.20;
+  }
+  const TERRAIN_AMPLITUDE = 16; // how many blocks of rolling hill/valley the base terrain (before mountains) swings across
+  function mountainFieldAt(x, seed, sharpness) {
+    const n = noise1D(x, seed, 1 / 220); // very low frequency -- mountains span wide stretches
+    const t = Math.max(0, n - 0.5) / 0.5; // 0 across the bottom half of the noise range
+    return Math.pow(t, sharpness); // higher sharpness = rarer but taller, more sharply-pointed peaks
+  }
+  const MOUNTAIN_MAX_FRONT = 68; // tall enough for real peaks to reach into the cloud band ~40-50 up
+  const MOUNTAIN_SHARPNESS = 3.6; // pulled up from a gentler 2.2 -- narrows peaks into sharp points instead of rounded humps
+
+  // ---- oceans: a very low frequency mask decides, at a scale of thousands
+  // of blocks, whether a stretch of the map is dry continent or deep ocean.
+  // The underlying noise is continuous, so the land<->ocean boundary tapers
+  // in smoothly over a real coastline instead of snapping like a cliff, but
+  // the band is kept narrow so that coastline doesn't read as a giant beach.
+  // One fixed world row is sea level everywhere, both for the ocean here
+  // and for inland lakes below.
+  const SEA_LEVEL = SURFACE_BASE + 8;
+  function continentMaskAt(x) { return noise1D(x, 6, 1 / 1600); } // huge, slow-rolling landmasses/basins
+  const COAST_BAND = 0.015; // how wide (in mask units) the land<->ocean transition is -- kept tight for a real, short shoreline
+  function oceanFactorAt(x) {
+    const m = continentMaskAt(wrapX(x));
+    return Math.max(0, Math.min(1, (m - (0.5 - COAST_BAND)) / (2 * COAST_BAND))); // 0 = dry land, 1 = open ocean
+  }
+  function oceanFloorRawAt(x) {
+    // gentle rolling seafloor -- shallower near shore, trench-like further
+    // out -- capped well inside WORLD_H so it never runs off the bottom
+    const rolling = noise1D(x, 7, 1 / 260);
+    return Math.min(WORLD_H - 3, SEA_LEVEL + 6 + rolling * 12); // 6-18 blocks below sea level
   }
 
-  function buildLayer(heights, waterMask) {
-    const layer = Array.from({length: WORLD_H}, () => new Array(WORLD_W).fill(SKY));
-    // decide lake regions up front (flat water level, basin-shaped bed) so trees can avoid them
-    const numLakes = Math.max(3, Math.floor(WORLD_W / 30));
-    const lakes = [];
-    const lakeCols = new Set();
-    for (let L = 0; L < numLakes; L++) {
-      const lakeW = 8 + Math.floor(Math.random() * 14); // 8-21 tiles wide
-      const cx = Math.floor(Math.random() * WORLD_W);
-      const maxDepth = 4 + Math.floor(Math.random() * 5); // 4-8 tiles deep at center
-      const half = Math.floor(lakeW / 2);
-      // flat water level = average ground height across the lake's span, sunk in a little
-      let sumSurf = 0, cnt = 0;
-      for (let dx = -half; dx <= half; dx++) {
-        const x = cx + dx;
-        if (x < 0 || x >= WORLD_W) continue;
-        sumSurf += heights[x]; cnt++;
-        lakeCols.add(x);
-      }
-      const waterLevel = Math.round(sumSurf / cnt) + 1;
-      lakes.push({ cx, half, maxDepth, waterLevel });
+  function frontHeightAt(rawX) {
+    const x = wrapX(rawX);
+    const detail = terrainDetailAt(x);
+    const mountain = mountainFieldAt(x, 5, MOUNTAIN_SHARPNESS) * MOUNTAIN_MAX_FRONT;
+    const land = Math.round(SURFACE_BASE + detail * TERRAIN_AMPLITUDE - mountain);
+    const ocean = oceanFactorAt(x);
+    if (ocean <= 0) return land;
+    const floor = oceanFloorRawAt(x);
+    return Math.round(land + (floor - land) * ocean);
+  }
+  // the background layer's terrain uses the exact same detail and mountain
+  // noise as the front layer (just a tiny per-column jitter on top), so it
+  // reads as the next slice of the same landform, not a different one --
+  // and it's hard-capped to never rise more than 5 blocks higher (smaller
+  // row) than the front layer at that column, however the noise lines up.
+  // The ocean blend uses the same mask/floor as the front layer too, so a
+  // coastline (and the ocean beyond it) lines up between both layers.
+  function backHeightAt(rawX) {
+    const x = wrapX(rawX);
+    const detail = terrainDetailAt(x);
+    const j = hash1(x, 3) < 0.35 ? (hash1(x, 4) < 0.5 ? -1 : 1) : 0;
+    const mountain = mountainFieldAt(x, 5, MOUNTAIN_SHARPNESS) * MOUNTAIN_MAX_FRONT; // identical noise to the front layer
+    const land = Math.round(SURFACE_BASE + detail * TERRAIN_AMPLITUDE + j - mountain);
+    const ocean = oceanFactorAt(x);
+    const raw = ocean <= 0 ? land : Math.round(land + (oceanFloorRawAt(x) - land) * ocean);
+    return Math.max(raw, frontHeightAt(x) - 5);
+  }
+
+  // ---- lakes: no separate lake object at all -- dry land (anywhere the
+  // ocean mask above says "not ocean") simply floods wherever its own
+  // rolling terrain naturally dips below sea level. This is the exact same
+  // sea-level rule that fills the ocean above, just applied inland: a wide
+  // inland dip becomes a lake and a narrow one becomes a pond, purely as a
+  // consequence of the terrain's shape -- see genLayerChunk for where this
+  // actually gets flooded.
+  // true wherever a column's ground naturally sits below sea level (i.e.
+  // it's open water, whether that's the ocean or an inland lake)
+  function isWaterColumn(rawX, heightFn) {
+    return heightFn(rawX) > SEA_LEVEL;
+  }
+  // for framing an above-ground camera shot: over dry land this is the same
+  // as frontHeightAt, but over open water frontHeightAt returns the bed
+  // (useful for collision/digging), which is the wrong thing to frame a
+  // "treetop/ground level" shot against -- it puts the camera at the bottom
+  // of the water instead of at its surface. This returns whichever row a
+  // camera should actually treat as "the surface" to look at.
+  function surfaceRefAt(rawX) {
+    return oceanFactorAt(rawX) > 0 ? SEA_LEVEL : frontHeightAt(rawX);
+  }
+
+
+  // ---- trees: one candidate slot per fixed-size cell, so neighboring trees
+  // can never overlap canopies (cells are wider than a canopy) ----
+  const TREE_CELL_W = 6;
+  function treeInCell(cellIdx, isBackground, heightFn) {
+    // sparser in the front layer so it doesn't clutter up ground travel,
+    // denser in the background where it's just scenery you walk past, not through
+    const chance = isBackground ? 0.55 : 0.22;
+    const seed = isBackground ? 101 : 100;
+    if (hash1(cellIdx, seed) > chance) return null;
+    const anchor = cellIdx * TREE_CELL_W + 2 + Math.floor(hash1(cellIdx, seed + 2) * (TREE_CELL_W - 4));
+    const surf = heightFn(anchor);
+    if (surf - 6 < 0) return null;
+    if (surf > SEA_LEVEL) return null; // no trees growing on the ocean floor
+    if (surf <= TREE_LINE_Y) return null; // too high up the mountain -- above the tree line
+    for (let d = -2; d <= 2; d++) {
+      if (isWaterColumn(anchor + d, heightFn)) return null; // too close to water
     }
-    let lastTreeEnd = -10; // guards against overlapping canopies
-    for (let x = 0; x < WORLD_W; x++) {
-      const surf = heights[x];
+    return { x: anchor, surf };
+  }
+
+  // ---- chunked, on-demand world storage ----
+  const CHUNK_W = 32;
+  const chunkCache = new Map(); // key `${layerIdx}:${chunkIdx}` -> 2D array [WORLD_H][CHUNK_W]
+
+  function genLayerChunk(chunkIdx, layerIdx) {
+    const isBackground = layerIdx === 1;
+    const heightFn = isBackground ? backHeightAt : frontHeightAt;
+    const chunkStart = chunkIdx * CHUNK_W;
+    const grid = Array.from({ length: WORLD_H }, () => new Array(CHUNK_W).fill(SKY));
+
+    // clay is a chance-based swap-in wherever sand would otherwise sit on a
+    // submerged bed (never on the single dry shore tile flanking a lake --
+    // that's beach, not lakebed/seafloor). Lakes roll this per-tile far more
+    // often than the open ocean does, so lakebeds read as clay-rich while
+    // the ocean floor gets it too, just more sparsely.
+    const LAKE_CLAY_CHANCE = 0.35;
+    const OCEAN_CLAY_CHANCE = 0.12;
+    function bedTileAt(x, y, isOcean) {
+      const r = hash2(x, y, 250); // dedicated seed so this doesn't correlate with ore/lava rolls
+      const clayChance = isOcean ? OCEAN_CLAY_CHANCE : LAKE_CLAY_CHANCE;
+      return r < clayChance ? CLAY : SAND;
+    }
+
+    for (let lx = 0; lx < CHUNK_W; lx++) {
+      const x = chunkStart + lx;
+      const surf = heightFn(x);
+      // any column whose ground naturally dips below sea level is flooded
+      // from sea level down to the bed, with sand (or, per bedTileAt above,
+      // clay) at the bed and a single tile of shore on either side instead
+      // of grass/dirt
+      const flooded = isWaterColumn(x, heightFn);
+      const nearShore = !flooded && (isWaterColumn(x - 1, heightFn) || isWaterColumn(x + 1, heightFn));
+      const sandy = flooded || nearShore;
+      const isOcean = oceanFactorAt(x) > 0;
+      const bare = !sandy && surf <= GRASS_LINE_Y; // high mountain ground, just below the clouds and up -- bare rock, no grass
       for (let y = 0; y < WORLD_H; y++) {
-        if (y === surf) layer[y][x] = GRASS;
-        else if (y > surf && y < surf + 3) layer[y][x] = DIRT;
-        else if (y >= surf + 3) layer[y][x] = STONE;
-      }
-      // occasional tree (never on a body of water, never overlapping another tree)
-      if (x > lastTreeEnd && Math.random() < 0.12 && surf - 6 >= 0) {
-        let canPlant = true;
-        for (let dx = -2; dx <= 2; dx++) {
-          const cx = x + dx;
-          if (cx < 0 || cx >= WORLD_W || lakeCols.has(cx)) { canPlant = false; break; }
-        }
-        if (canPlant) {
-          // canopy tapers to a point at the top; the trunk runs straight up
-          // through its middle, flanked by leaves on the two widest rows
-          const canopyRows = [
-            { dy: -6, dx: [-1, 0, 1] },
-            { dy: -5, dx: [-2, -1, 0, 1, 2] },
-            { dy: -4, dx: [-2, -1, 1, 2] },
-            { dy: -3, dx: [-2, -1, 1, 2] },
-          ];
-          for (const { dy, dx } of canopyRows) {
-            for (const d of dx) layer[surf + dy][x + d] = LEAF;
-          }
-          // trunk: 4 blocks tall, straight up from the ground through the canopy
-          layer[surf - 4][x] = WOOD;
-          layer[surf - 3][x] = WOOD;
-          layer[surf - 2][x] = WOOD;
-          layer[surf - 1][x] = WOOD;
-          lastTreeEnd = x + 2;
-        }
+        if (flooded && y >= SEA_LEVEL && y < surf) grid[y][lx] = isBackground ? SKY : WATER;
+        else if (y === surf) grid[y][lx] = bare ? STONE : (!sandy ? GRASS : (flooded ? bedTileAt(x, y, isOcean) : SAND));
+        else if (y > surf && y < surf + 3) grid[y][lx] = bare ? STONE : (!sandy ? DIRT : (flooded ? bedTileAt(x, y, isOcean) : SAND));
+        else if (y >= surf + 3) grid[y][lx] = STONE;
       }
     }
-    // carve out real bodies of water: wide, basin-shaped lakes with a flat water surface
-    for (const { cx, half, maxDepth, waterLevel } of lakes) {
-      for (let dx = -half; dx <= half; dx++) {
-        const x = cx + dx;
-        if (x < 0 || x >= WORLD_W) continue;
-        // basin shape: deepest in the middle, tapering to the shore at the edges
-        const edgeFactor = 1 - Math.abs(dx) / (half + 1);
-        const colDepth = Math.max(1, Math.round(maxDepth * edgeFactor));
-        const bedY = Math.min(WORLD_H - 2, waterLevel + colDepth);
-        // carve from whichever is higher (smaller y) - the original ground or the flat water level -
-        // down to the basin floor, so the water surface lines up flat across the whole lake.
-        // bodies of water only ever generate in the front layer; the background layer
-        // just gets the basin carved out as empty air (a cavern behind the lake) so no
-        // water can ever generate there.
-        const topY = Math.min(heights[x], waterLevel);
-        for (let y = topY; y < bedY; y++) {
-          if (y < waterLevel || waterMask) {
-            layer[y][x] = SKY;
-          } else {
-            layer[y][x] = WATER;
-          }
+
+    // trees: check every tree-cell that could place its trunk/canopy inside this chunk
+    const treeCellStart = Math.floor((chunkStart - 3) / TREE_CELL_W);
+    const treeCellEnd = Math.floor((chunkStart + CHUNK_W + 3) / TREE_CELL_W);
+    for (let c = treeCellStart; c <= treeCellEnd; c++) {
+      const tree = treeInCell(c, isBackground, heightFn);
+      if (!tree) continue;
+      const { x, surf } = tree;
+      const canopyRows = [
+        { dy: -6, dx: [-1, 0, 1] },
+        { dy: -5, dx: [-2, -1, 0, 1, 2] },
+        { dy: -4, dx: [-2, -1, 1, 2] },
+        { dy: -3, dx: [-2, -1, 1, 2] },
+      ];
+      for (const { dy, dx } of canopyRows) {
+        for (const d of dx) {
+          const wx = x + d, lx = wx - chunkStart;
+          if (lx < 0 || lx >= CHUNK_W) continue;
+          grid[surf + dy][lx] = LEAF;
         }
-        layer[bedY][x] = STONE;
+      }
+      for (let dy = -4; dy <= -1; dy++) {
+        const lx = x - chunkStart;
+        if (lx < 0 || lx >= CHUNK_W) continue;
+        grid[surf + dy][lx] = WOOD;
       }
     }
-    // sprinkle ore into stone, and lava down in the deeper underground
+
+    // sprinkle ore into stone, and let stone gradually give way to lava the
+    // deeper you go -- by the time you're at the very bottom (the "core")
+    // it's effectively all lava, with the changeover ramping up smoothly
+    // rather than snapping on at some fixed depth. depthFrac is 0 just below
+    // the surface and 1 at the world's lowest row; cubing it means the
+    // upper bulk of the underground stays normal stone/ore territory and
+    // only the deepest stretch really starts turning molten.
     for (let y = 0; y < WORLD_H; y++) {
-      for (let x = 0; x < WORLD_W; x++) {
-        if (layer[y][x] !== STONE) continue;
-        const r = Math.random();
-        if (r < 0.06) layer[y][x] = COAL_ORE;
-        else if (r < 0.10) layer[y][x] = IRON_ORE;
-        else if (r < 0.14) layer[y][x] = COPPER_ORE;
-        else if (y >= WORLD_H - 6 && r < 0.20) layer[y][x] = LAVA;
+      const depthFrac = Math.max(0, Math.min(1, (y - SURFACE_BASE) / (WORLD_H - SURFACE_BASE)));
+      const lavaChance = y >= WORLD_H - 1 ? 1 : Math.pow(depthFrac, 3);
+      for (let lx = 0; lx < CHUNK_W; lx++) {
+        if (grid[y][lx] !== STONE) continue;
+        const x = wrapX(chunkStart + lx);
+        const r = hash2(x, y, layerIdx === 1 ? 200 : 199);
+        if (r < lavaChance) { grid[y][lx] = LAVA; continue; }
+        const rr = (r - lavaChance) / (1 - lavaChance); // remaining stone's own 0-1 roll
+        if (rr < 0.025) grid[y][lx] = COAL_ORE;
+        else if (rr < 0.04) grid[y][lx] = IRON_ORE;
+        else if (rr < 0.05) grid[y][lx] = COPPER_ORE;
       }
     }
-    return layer;
+    return grid;
   }
 
-  // layer 0 = front (the one shown normally), layer 1 = background
-  const heightsArr = [];
-  heightsArr[0] = generateHeights();
-  heightsArr[1] = jitterHeights(heightsArr[0]);
-  const frontLayer = buildLayer(heightsArr[0], null);
-  const backLayer = buildLayer(heightsArr[1], frontLayer);
-  const layers = [frontLayer, backLayer];
+  function ensureChunk(layerIdx, chunkIdx) {
+    const key = layerIdx + ':' + chunkIdx;
+    let grid = chunkCache.get(key);
+    if (!grid) {
+      grid = genLayerChunk(chunkIdx, layerIdx);
+      chunkCache.set(key, grid);
+    }
+    return grid;
+  }
+  // note: deliberately never evicted -- chunks hold the player's actual
+  // edits (mined/placed blocks, fluid flow, grass growth), so dropping one
+  // would silently revert it back to freshly-generated terrain the next time
+  // the player wandered back. Each chunk is small, so this is fine for any
+  // reasonably long play session.
+
+  const layers = [null, null]; // kept only so other code can check `layers.length` for "how many layers"
 
   function blockAtLayer(layer, x, y) {
     if (y < 0) return SKY;
     if (y >= WORLD_H) return STONE;
-    if (x < 0 || x >= WORLD_W) return STONE;
-    return layers[layer][y][x];
+    const wx = wrapX(x);
+    const chunkIdx = Math.floor(wx / CHUNK_W);
+    const grid = ensureChunk(layer, chunkIdx);
+    return grid[y][wx - chunkIdx * CHUNK_W];
+  }
+  function setBlockAtLayer(layer, x, y, value) {
+    if (y < 0 || y >= WORLD_H) return;
+    const wx = wrapX(x);
+    const chunkIdx = Math.floor(wx / CHUNK_W);
+    const grid = ensureChunk(layer, chunkIdx);
+    grid[y][wx - chunkIdx * CHUNK_W] = value;
   }
   function blockAt(x, y) { return blockAtLayer(0, x, y); }
   function solid(t) { return t !== SKY && !FLUIDS.has(t); }
@@ -490,18 +1005,42 @@
   // ---- fluid flow simulation ----
   // Water/lava spread out from source blocks and from other flowing blocks on both
   // sides, tapering from level 1 up to level 3 (the last taper asset), and stop
-  // spreading further once they hit level 3 or run into a solid block. Any fluid
-  // block with open space below it also drips straight down into that space. A
-  // flowing (non-source) block that's no longer fed by a source or another flowing
-  // block reverts back to empty air.
+  // spreading further once they hit level 3 or run into a solid block. If a tile
+  // has nothing solid directly beneath it (unsupported, hanging in open air),
+  // it can only spread one block further before stopping, instead of tapering
+  // all the way out to level 3. A falling column tile produces no horizontal
+  // spread at all until it lands on something solid beneath it. Any fluid block
+  // with open space below it also drips straight down into that space. A
+  // flowing (non-source) block that's no longer fed by a source or another
+  // flowing block reverts back to empty air.
+  const BLOCK_SIM_RADIUS = 32; // fire, grass, and fluids only simulate within this many blocks of the player
+  const WEATHER_RADIUS = 128;  // weather (wind, particles, rain) simulates within this many blocks of the player
+
   function simulateFluidsForLayer(layerIdx, fluidName) {
-    const grid = layers[layerIdx];
     const additions = []; // {x, y, level, dir}
     const removals = [];  // {x, y}
+    const cx = Math.floor(player.x);
+    const xMin = cx - BLOCK_SIM_RADIUS, xMax = cx + BLOCK_SIM_RADIUS;
+
+    // a tile is "supported" if there's something solid directly beneath it --
+    // unsupported fluid (hanging in open air, nothing solid underneath) can only
+    // spread out one block from its feed before stopping, instead of tapering
+    // all the way out to level 3.
+    function isSupported(x, y) {
+      return solid(blockAtLayer(layerIdx, x, y + 1));
+    }
+
+    // a falling column tile (dir 'D') can only feed horizontal flow once it has
+    // landed on something solid beneath it -- while still falling through open
+    // space it produces no horizontal spread at all.
+    function canFeedHorizontally(nx, ny, nMeta) {
+      if (nMeta.dir === 'D' && !isSupported(nx, ny)) return false;
+      return true;
+    }
 
     for (let y = 0; y < WORLD_H; y++) {
-      for (let x = 0; x < WORLD_W; x++) {
-        const t = grid[y][x];
+      for (let x = xMin; x <= xMax; x++) {
+        const t = blockAtLayer(layerIdx, x, y);
         const meta = FLUID_META[t];
 
         if (meta && meta.fluid === fluidName) {
@@ -520,16 +1059,17 @@
           const rightT = blockAtLayer(layerIdx, x + 1, y);
           const leftMeta = FLUID_META[leftT];
           const rightMeta = FLUID_META[rightT];
+          const maxLevel = isSupported(x, y) ? 3 : 1;
           let bestLevel = Infinity, bestDir = null;
-          if (leftMeta && leftMeta.fluid === fluidName) {
+          if (leftMeta && leftMeta.fluid === fluidName && canFeedHorizontally(x - 1, y, leftMeta)) {
             const lv = leftMeta.isSource ? 0 : leftMeta.level;
-            if (lv + 1 <= 3 && lv + 1 < bestLevel) { bestLevel = lv + 1; bestDir = 'R'; }
+            if (lv + 1 <= maxLevel && lv + 1 < bestLevel) { bestLevel = lv + 1; bestDir = 'R'; }
           }
-          if (rightMeta && rightMeta.fluid === fluidName) {
+          if (rightMeta && rightMeta.fluid === fluidName && canFeedHorizontally(x + 1, y, rightMeta)) {
             const lv = rightMeta.isSource ? 0 : rightMeta.level;
-            if (lv + 1 <= 3 && lv + 1 < bestLevel) { bestLevel = lv + 1; bestDir = 'L'; }
+            if (lv + 1 <= maxLevel && lv + 1 < bestLevel) { bestLevel = lv + 1; bestDir = 'L'; }
           }
-          if (bestLevel > 3) {
+          if (bestLevel > maxLevel) {
             removals.push({ x, y }); // nothing feeds this tile anymore
           } else if (bestLevel !== meta.level || bestDir !== meta.dir) {
             additions.push({ x, y, level: bestLevel, dir: bestDir });
@@ -562,23 +1102,24 @@
           const rightT = blockAtLayer(layerIdx, x + 1, y);
           const leftMeta = FLUID_META[leftT];
           const rightMeta = FLUID_META[rightT];
+          const maxLevel = isSupported(x, y) ? 3 : 1;
           let bestLevel = Infinity, bestDir = null;
-          if (leftMeta && leftMeta.fluid === fluidName) {
+          if (leftMeta && leftMeta.fluid === fluidName && canFeedHorizontally(x - 1, y, leftMeta)) {
             const lv = leftMeta.isSource ? 0 : leftMeta.level;
-            if (lv + 1 <= 3 && lv + 1 < bestLevel) { bestLevel = lv + 1; bestDir = 'R'; }
+            if (lv + 1 <= maxLevel && lv + 1 < bestLevel) { bestLevel = lv + 1; bestDir = 'R'; }
           }
-          if (rightMeta && rightMeta.fluid === fluidName) {
+          if (rightMeta && rightMeta.fluid === fluidName && canFeedHorizontally(x + 1, y, rightMeta)) {
             const lv = rightMeta.isSource ? 0 : rightMeta.level;
-            if (lv + 1 <= 3 && lv + 1 < bestLevel) { bestLevel = lv + 1; bestDir = 'L'; }
+            if (lv + 1 <= maxLevel && lv + 1 < bestLevel) { bestLevel = lv + 1; bestDir = 'L'; }
           }
-          if (bestLevel <= 3) additions.push({ x, y, level: bestLevel, dir: bestDir });
+          if (bestLevel <= maxLevel) additions.push({ x, y, level: bestLevel, dir: bestDir });
         }
       }
     }
 
-    for (const { x, y } of removals) grid[y][x] = SKY;
+    for (const { x, y } of removals) setBlockAtLayer(layerIdx, x, y, SKY);
     for (const { x, y, level, dir, becomeSource } of additions) {
-      grid[y][x] = becomeSource ? (fluidName === 'lava' ? LAVA : WATER) : flowTileFor(fluidName, level, dir);
+      setBlockAtLayer(layerIdx, x, y, becomeSource ? (fluidName === 'lava' ? LAVA : WATER) : flowTileFor(fluidName, level, dir));
     }
   }
 
@@ -586,6 +1127,1071 @@
     for (let layerIdx = 0; layerIdx < layers.length; layerIdx++) {
       simulateFluidsForLayer(layerIdx, 'water');
       simulateFluidsForLayer(layerIdx, 'lava');
+    }
+  }
+
+  // ---- fire: flammable blocks that touch lava catch fire, burn for a while
+  // (animated with the fire overlay), then burn away to empty air ----
+  const FLAMMABLE = new Set([WOOD, WOOD_PLANKS, CRAFTING_TABLE]);
+  const BURN_DURATION_TICKS = 30; // ~4.5s at the 150ms fluid/fire tick rate
+  const burning = new Map(); // key "layer,x,y" -> ticks remaining
+  function isLavaTile(t) { return t === LAVA || (FLUID_META[t] && FLUID_META[t].fluid === 'lava'); }
+  function isWaterTile(t) { return t === WATER || (FLUID_META[t] && FLUID_META[t].fluid === 'water'); }
+
+  function simulateFire() {
+    const cx = Math.floor(player.x);
+    const xMin = cx - BLOCK_SIM_RADIUS, xMax = cx + BLOCK_SIM_RADIUS;
+    // ignite any flammable block currently touching lava
+    for (let layerIdx = 0; layerIdx < layers.length; layerIdx++) {
+      for (let y = 0; y < WORLD_H; y++) {
+        for (let x = xMin; x <= xMax; x++) {
+          if (!FLAMMABLE.has(blockAtLayer(layerIdx, x, y))) continue;
+          const key = `${layerIdx},${x},${y}`;
+          if (burning.has(key)) continue;
+          const touchingLava =
+            isLavaTile(blockAtLayer(layerIdx, x, y - 1)) || isLavaTile(blockAtLayer(layerIdx, x, y + 1)) ||
+            isLavaTile(blockAtLayer(layerIdx, x - 1, y)) || isLavaTile(blockAtLayer(layerIdx, x + 1, y));
+          if (touchingLava) burning.set(key, BURN_DURATION_TICKS);
+        }
+      }
+    }
+
+    // advance existing fires; water (any state or source) puts them straight
+    // out, otherwise a block that finishes burning turns to empty air. while
+    // burning, any neighboring clay bakes into brick from the heat
+    for (const [key, ticksLeft] of burning) {
+      const [layerIdx, x, y] = key.split(',').map(Number);
+      if (Math.abs(x - cx) > BLOCK_SIM_RADIUS) continue; // out of range this tick -- leave it as-is, revisit later
+      if (!FLAMMABLE.has(blockAtLayer(layerIdx, x, y))) { burning.delete(key); continue; } // mined/changed out from under the fire
+
+      for (const [nx, ny] of [[x, y - 1], [x, y + 1], [x - 1, y], [x + 1, y]]) {
+        if (blockAtLayer(layerIdx, nx, ny) === CLAY) setBlockAtLayer(layerIdx, nx, ny, BRICK);
+      }
+
+      const touchingWater =
+        isWaterTile(blockAtLayer(layerIdx, x, y - 1)) || isWaterTile(blockAtLayer(layerIdx, x, y + 1)) ||
+        isWaterTile(blockAtLayer(layerIdx, x - 1, y)) || isWaterTile(blockAtLayer(layerIdx, x + 1, y));
+      if (touchingWater) {
+        burning.delete(key); // extinguished -- the block survives
+      } else if (ticksLeft <= 1) {
+        setBlockAtLayer(layerIdx, x, y, SKY);
+        burning.delete(key);
+      } else {
+        burning.set(key, ticksLeft - 1);
+      }
+    }
+  }
+
+  // ---- grass: spreads onto bordering dirt that's open to the sky, and dies
+  // back to dirt if something ends up covering it (blocking the light) for
+  // a while -- mirrors the burning map's "ticks so far" bookkeeping above ----
+  const GRASS_SPREAD_CHANCE = 0.12; // per bordering dirt tile, per grass tick
+  const GRASS_DECAY_TICKS = 24; // how many grass ticks a block must stay covered before it dies to dirt
+  const grassCovered = new Map(); // key "layer,x,y" -> ticks spent covered so far
+
+  function simulateGrass() {
+    const cx = Math.floor(player.x);
+    const xMin = cx - BLOCK_SIM_RADIUS, xMax = cx + BLOCK_SIM_RADIUS;
+    for (let layerIdx = 0; layerIdx < layers.length; layerIdx++) {
+
+      // decay: a grass block with something solid directly above it is cut
+      // off from light; once that's been true for long enough it dies to dirt
+      for (let y = 0; y < WORLD_H; y++) {
+        for (let x = xMin; x <= xMax; x++) {
+          if (blockAtLayer(layerIdx, x, y) !== GRASS) continue;
+          const key = `${layerIdx},${x},${y}`;
+          if (solid(blockAtLayer(layerIdx, x, y - 1))) {
+            const ticks = (grassCovered.get(key) || 0) + 1;
+            if (ticks >= GRASS_DECAY_TICKS) {
+              setBlockAtLayer(layerIdx, x, y, DIRT);
+              grassCovered.delete(key);
+            } else {
+              grassCovered.set(key, ticks);
+            }
+          } else if (grassCovered.has(key)) {
+            grassCovered.delete(key); // uncovered again -- reset the clock
+          }
+        }
+      }
+
+      // spread: dirt open to the sky that borders a grass block has a chance
+      // each tick to turn to grass itself (collected first, applied after,
+      // so a tile spreading this tick can't chain into its neighbor same-tick)
+      const additions = [];
+      for (let y = 0; y < WORLD_H; y++) {
+        for (let x = xMin; x <= xMax; x++) {
+          if (blockAtLayer(layerIdx, x, y) !== DIRT) continue;
+          if (solid(blockAtLayer(layerIdx, x, y - 1))) continue; // covered, no light
+          if (y <= GRASS_LINE_Y) continue; // too high up the mountain -- stays bare dirt/stone, doesn't green up
+          const bordersGrass =
+            blockAtLayer(layerIdx, x - 1, y) === GRASS || blockAtLayer(layerIdx, x + 1, y) === GRASS ||
+            blockAtLayer(layerIdx, x, y - 1) === GRASS || blockAtLayer(layerIdx, x, y + 1) === GRASS ||
+            blockAtLayer(layerIdx, x - 1, y - 1) === GRASS || blockAtLayer(layerIdx, x + 1, y - 1) === GRASS ||
+            blockAtLayer(layerIdx, x - 1, y + 1) === GRASS || blockAtLayer(layerIdx, x + 1, y + 1) === GRASS;
+          if (bordersGrass && Math.random() < GRASS_SPREAD_CHANCE) additions.push([x, y]);
+        }
+      }
+      for (const [x, y] of additions) setBlockAtLayer(layerIdx, x, y, GRASS);
+    }
+  }
+
+  const FIRE_FRAME_MS = 150;
+  function drawFireOverlay(dx, dy) {
+    const frame = Math.floor(performance.now() / FIRE_FRAME_MS) % 4;
+    ctx.drawImage(fireSheet, frame * 2, 0, BLOCK, BLOCK, dx, dy, BLOCK, BLOCK);
+  }
+
+  // spam-tapping interact on a flammable block with a stick in hand lights
+  // it on fire: each tap on the *same* block, close enough together in time,
+  // builds up "friction"; enough consecutive taps and it catches
+  const STICK_IGNITE_TAPS = 5;
+  const STICK_IGNITE_WINDOW_MS = 600;
+  let stickIgniteKey = null, stickIgniteCount = 0, stickIgniteTime = 0;
+  function igniteWithStick(layerIdx, x, y) {
+    const key = `${layerIdx},${x},${y}`;
+    const now = performance.now();
+    if (key === stickIgniteKey && now - stickIgniteTime < STICK_IGNITE_WINDOW_MS) {
+      stickIgniteCount++;
+    } else {
+      stickIgniteKey = key;
+      stickIgniteCount = 1;
+    }
+    stickIgniteTime = now;
+    if (stickIgniteCount >= STICK_IGNITE_TAPS) {
+      burning.set(key, BURN_DURATION_TICKS);
+      stickIgniteKey = null;
+      stickIgniteCount = 0;
+    }
+  }
+
+  // ---- player (declared up here, before weather, since weather particles
+  // spawn relative to the player's position right from world-gen time) ----
+  // pick a spawn column derived from the random world seed, then search
+  // outward in both directions to the nearest dry land -- never spawn the
+  // player underwater in the ocean just because the seed happened to put
+  // open sea at that exact spot
+  function findSpawnX() {
+    const start = WORLD_SEED % 1000000;
+    for (let i = 0; i < 20000; i++) {
+      if (!isWaterColumn(start + i, frontHeightAt)) return start + i;
+      if (!isWaterColumn(start - i, frontHeightAt)) return start - i;
+    }
+    return start; // fallback: extremely unlikely to be needed
+  }
+  const SPAWN_X = wrapX(findSpawnX());
+
+  // the day/night clock (see dayCycleStart above) is anchored to real time
+  // and the player's position acts as a "timezone" offset -- which means
+  // without correction, spawning could land at any hour depending purely on
+  // when the page happens to load. Re-anchor dayCycleStart here so that,
+  // right now, localDayFrac(SPAWN_X) works out to exactly noon (0.5).
+  {
+    const zone = (SPAWN_X + WORLD_RADIUS) / WORLD_PERIOD;
+    const targetBase = ((0.5 - zone) % 1 + 1) % 1;
+    dayCycleStart = performance.now() - targetBase * DAY_LENGTH_MS;
+  }
+
+  const player = {
+    x: SPAWN_X, y: frontHeightAt(SPAWN_X) - 1, // block coords (float)
+    vx: 0, vy: 0,
+    hp: 10,
+  };
+
+  // ---- weather: discrete drifting clouds, no evaporation ----
+  // Clouds are simple particle-clusters spawned at one edge of the
+  // simulated window around the player and drift steadily to the other
+  // edge on a constant wind, recycling into a brand new cloud once they
+  // drift out of range. There's no water-seeking, no moisture cycle.
+  //
+  // Each cloud is a swarm of small, genuinely free-flying particles --
+  // there is no fixed silhouette drawn directly. Instead, a handful of
+  // "anchor" points are laid out per cloud type (a loose template: a wide
+  // low base for cumulus, a flat sheet for stratonimbus, a tower-plus-anvil
+  // for cumulonimbus). Several particles are seeded near each anchor and
+  // are shaped ONLY by an attraction force pulling each one back toward
+  // its own (slowly wandering) anchor point -- there is no repulsion and
+  // no collision between particles. That single attraction, combined with
+  // velocity damping, is what keeps the swarm loosely clustered into a
+  // soft, rounded volume instead of drifting apart or freezing into a
+  // rigid shape: because each anchor itself wobbles slowly over time, the
+  // particles never settle -- they keep gently orbiting and drifting
+  // around their target, so the cloud is always alive and never reads as
+  // a hard, static shape. Each particle is drawn as its own soft,
+  // transparent-edged blob, so overlapping particles blend into one fuzzy
+  // mass rather than a crisp silhouette.
+
+  const CLOUD_MIN_Y = SURFACE_BASE - 60, CLOUD_MAX_Y = SURFACE_BASE - 30; // ~30-60 blocks above ground -- extra vertical room so clouds spread across a taller band instead of a thin shelf
+  const CLOUD_BAND_CENTER = (CLOUD_MIN_Y + CLOUD_MAX_Y) / 2;
+
+  // constant wind: clouds always drift the same direction, entering at one
+  // edge of the simulated window and leaving at the other, as requested.
+  const WIND_SPEED = 1.1; // blocks/sec, world-space, always positive (west -> east)
+
+  // minimum/typical gap (in blocks, edge-to-edge) enforced between
+  // consecutive clouds so they never spawn stacked on top of one another --
+  // this is what actually keeps the sky from looking like a jumbled mess of
+  // clashing cloud types crammed together. Occasionally stretched much
+  // further (see rollCloudGap) so long stretches of open, clear sky happen
+  // between weather systems instead of clouds marching past nonstop.
+  const CLOUD_GAP_MIN = 16, CLOUD_GAP_MAX = 34;
+  const CLOUD_LONG_GAP_CHANCE = 0.22; // chance any given gap becomes a long clear stretch
+  const CLOUD_LONG_GAP_MULT_MIN = 2.2, CLOUD_LONG_GAP_MULT_MAX = 4.5;
+  function rollCloudGap(gapMin, gapMax) {
+    let gap = gapMin + Math.random() * (gapMax - gapMin);
+    if (Math.random() < CLOUD_LONG_GAP_CHANCE) {
+      gap *= CLOUD_LONG_GAP_MULT_MIN + Math.random() * (CLOUD_LONG_GAP_MULT_MAX - CLOUD_LONG_GAP_MULT_MIN);
+    }
+    return gap;
+  }
+
+  // roughly how many clouds fit in the simulated window at the average gap
+  // above -- used only to size the initial seed pass's safety guard
+
+  // Cloud type definitions. `weight` biases how often each type is picked.
+  // Real storms are rare -- cumulus (plain, non-raining puffs) dominates the
+  // sky, stratonimbus shows up occasionally, and full cumulonimbus storm
+  // towers are a genuinely uncommon event rather than something that rolls
+  // around every other cloud. Every cloud is rendered in the same uniform
+  // color regardless of type -- types differ only in shape/density and in
+  // gameplay (how much sky they cover, how hard they rain), never in hue.
+  const CLOUD_TYPES = {
+    cumulus:      { weight: 0.74, rainRate: 0,    cover: 0.3  },
+    stratonimbus: { weight: 0.19, rainRate: 0.55, cover: 0.65 },
+    cumulonimbus: { weight: 0.07, rainRate: 1.0,  cover: 0.95 },
+  };
+  const CLOUD_TYPE_NAMES = Object.keys(CLOUD_TYPES);
+
+  // small decorative "mini cloud" wisps that drift in the gaps between the
+  // real weather clouds -- purely visual (no cover, no rain), scaled-down
+  // cumulus puffs that make the sky feel busier and less like a handful of
+  // isolated shapes floating in empty space
+  const MINI_CLOUD_GAP_MIN = 5, MINI_CLOUD_GAP_MAX = 13;
+  const MINI_CLOUD_SCALE_MIN = 0.2, MINI_CLOUD_SCALE_MAX = 0.4;
+  const MINI_CLOUD_MIN_Y = CLOUD_MIN_Y - 14, MINI_CLOUD_MAX_Y = CLOUD_MAX_Y + 18;
+  const MINI_WIND_SPEED = WIND_SPEED * 1.3; // drift a little faster than the main deck for a subtle parallax read
+
+  // single shared cloud color -- brightness/depth cues come from soft
+  // per-particle gradients and overlap density, never from a per-type hue
+  const CLOUD_COLOR = [232, 236, 242];
+
+  function pickCloudType() {
+    const r = Math.random();
+    let acc = 0;
+    for (const name of CLOUD_TYPE_NAMES) {
+      acc += CLOUD_TYPES[name].weight;
+      if (r < acc) return name;
+    }
+    return CLOUD_TYPE_NAMES[CLOUD_TYPE_NAMES.length - 1];
+  }
+
+  // Builds the anchor layout (offsets from the cloud's own center) for a
+  // given type. These anchors are NOT drawn -- they're just attraction
+  // targets that particles get seeded near and pulled back toward, so the
+  // swarm loosely traces out a template shape (wide fluffy base for
+  // cumulus, flat sheet for stratonimbus, tower+anvil for cumulonimbus)
+  // without ever being drawn as a rigid shape itself. Every cloud still
+  // gets its own random jitter on top so no two clouds of the same type
+  // match exactly.
+  function sculptCloudAnchors(type) {
+    const puffs = [];    if (type === 'cumulus') {
+      // a wide, low fluffy base with a few bigger puffs bulging up out of
+      // the middle -- the classic rounded cotton-ball cloud
+      const baseN = 5 + Math.floor(Math.random() * 3); // 5-7
+      const baseSpread = 3.2 + Math.random() * 1.4;
+      for (let i = 0; i < baseN; i++) {
+        const t = i / (baseN - 1);
+        const ox = (t - 0.5) * baseSpread * 2;
+        puffs.push({ ox, oy: 0.3 + (Math.random() - 0.5) * 0.3, r: 2.0 + Math.random() * 0.7 });
+      }
+      const domeN = 3 + Math.floor(Math.random() * 2); // 3-4 bulging on top
+      const domeSpread = baseSpread * 0.55;
+      for (let i = 0; i < domeN; i++) {
+        const t = domeN === 1 ? 0.5 : i / (domeN - 1);
+        puffs.push({ ox: (t - 0.5) * domeSpread * 2, oy: -0.9 - Math.random() * 0.6, r: 1.8 + Math.random() * 0.8 });
+      }
+    } else if (type === 'stratonimbus') {
+      // a broad, flattish, layered sheet with a very wide base -- two
+      // overlapping rows so it has real thickness rather than reading as
+      // a single flat line of circles
+      const n = 10 + Math.floor(Math.random() * 5); // 10-14, more puffs to keep the wider base dense
+      const spread = 10 + Math.random() * 4;
+      for (let i = 0; i < n; i++) {
+        const t = n === 1 ? 0.5 : i / (n - 1);
+        const ox = (t - 0.5) * spread * 2;
+        puffs.push({ ox, oy: 0.4 + (Math.random() - 0.5) * 0.3, r: 2.2 + Math.random() * 0.7 });
+        puffs.push({ ox: ox + (Math.random() - 0.5) * 0.8, oy: -0.5 + (Math.random() - 0.5) * 0.4, r: 1.7 + Math.random() * 0.7 });
+      }
+    } else { // cumulonimbus
+      // a genuine storm-tower silhouette: a very wide dark base, a
+      // narrower "waist" climbing up through the middle, and a broad flat
+      // anvil overhanging everything at the top -- the waist is what makes
+      // it read as a tall tower instead of one uniform wide blob. A slight
+      // overall lean plus asymmetric jitter keeps it from reading as a
+      // perfectly mirrored dumbbell.
+      const lean = (Math.random() - 0.5) * 3.5;
+      const baseN = 9 + Math.floor(Math.random() * 3); // 9-11, more puffs to fill the wider base
+      const baseSpread = 8 + Math.random() * 2.2;
+      for (let i = 0; i < baseN; i++) {
+        const t = i / (baseN - 1) + (Math.random() - 0.5) * 0.12;
+        puffs.push({ ox: (t - 0.5) * baseSpread * 2, oy: 2.2 + (Math.random() - 0.5) * 0.5, r: 2.4 + Math.random() * 0.9 });
+      }
+      // waist: several rows climbing up -- still narrower than the base so
+      // it reads as a tower, but generously thick through the middle so it
+      // has real body instead of pinching down to a skinny stalk
+      const waistRows = 4 + Math.floor(Math.random() * 2); // 4-5 rows
+      const waistBaseSpread = baseSpread * 0.55;
+      for (let row = 0; row < waistRows; row++) {
+        const rowN = 3 + Math.floor(Math.random() * 2); // 3-4 per row
+        const rowT = row / (waistRows - 1); // 0 at bottom of waist, 1 at top
+        const rowSpread = waistBaseSpread * (1 - rowT * 0.15); // tapers only slightly
+        const rowY = 1.0 - row * 1.5;
+        const rowLean = lean * rowT;
+        for (let i = 0; i < rowN; i++) {
+          const t = (rowN === 1 ? 0.5 : i / (rowN - 1)) + (Math.random() - 0.5) * 0.25;
+          puffs.push({
+            ox: (t - 0.5) * rowSpread * 2 + rowLean,
+            oy: rowY + (Math.random() - 0.5) * 0.4,
+            r: 2.1 + Math.random() * 0.8,
+          });
+        }
+      }
+      // anvil: wide, flattened cap overhanging the waist -- wider than the
+      // base itself, and squashed vertically so it reads as a spreading
+      // cap rather than another round puff cluster
+      const anvilN = 6 + Math.floor(Math.random() * 3); // 6-8
+      const anvilSpread = baseSpread * 1.3 + Math.random();
+      const anvilY = 1.0 - waistRows * 1.5 - 0.6;
+      // the anvil overhang isn't centered on the tower -- storms drift as
+      // they build, so real anvils spread further to one side
+      const anvilSkew = lean * 1.4 + (Math.random() - 0.5) * 1.5;
+      for (let i = 0; i < anvilN; i++) {
+        const t = i / (anvilN - 1) + (Math.random() - 0.5) * 0.1;
+        // pull the outer puffs in slightly toward the anvil's own height so
+        // the cap silhouette curves rather than sitting dead flat
+        const edge = Math.abs(t - 0.5) * 2;
+        puffs.push({
+          ox: (t - 0.5) * anvilSpread * 2 + anvilSkew,
+          oy: anvilY + edge * 0.5 + (Math.random() - 0.5) * 0.3,
+          r: 2.1 + Math.random() * 0.8,
+        });
+      }
+    }
+    // clouds got asked to be BIGGER across the board -- scale every anchor
+    // uniformly rather than hand-tuning each shape's numbers individually
+    const GLOBAL_CLOUD_SCALE = 1.35;
+    for (const p of puffs) { p.ox *= GLOBAL_CLOUD_SCALE; p.oy *= GLOBAL_CLOUD_SCALE; p.r *= GLOBAL_CLOUD_SCALE; }
+    return puffs;
+  }
+
+  function cloudWidthOf(anchors) {
+    let minX = Infinity, maxX = -Infinity;
+    for (const p of anchors) { minX = Math.min(minX, p.ox - p.r); maxX = Math.max(maxX, p.ox + p.r); }
+    return maxX - minX;
+  }
+
+  // seeds several small, free particles near each anchor. Every particle
+  // remembers its anchor's offset (ax, ay) as the point it will forever be
+  // gently pulled back toward -- that pull is the ONLY force acting on it
+  // (see updateCloudParticles), so the swarm's shape emerges purely from
+  // attraction, never from repulsion or collision between particles.
+  function buildCloudParticles(anchors) {
+    const particles = [];
+    for (const a of anchors) {
+      const n = 5 + Math.floor(Math.random() * 4); // 5-8 free particles per anchor -- denser swarm, more volume
+      for (let i = 0; i < n; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const dist = Math.random() * a.r * 0.7;
+        particles.push({
+          ax: a.ox, ay: a.oy,           // anchor point this particle is attracted to
+          ox: a.ox + Math.cos(ang) * dist, // current free-flying position
+          oy: a.oy + Math.sin(ang) * dist,
+          vx: (Math.random() - 0.5) * 0.2,
+          vy: (Math.random() - 0.5) * 0.2,
+          r: a.r * (0.45 + Math.random() * 0.35), // visual radius -- big and overlapping so the swarm reads as one full-bodied mass
+          alpha: 0.55 + Math.random() * 0.35,
+          wobblePhase: Math.random() * Math.PI * 2,
+          wobbleFreq: 0.12 + Math.random() * 0.18,
+          wobbleAmp: 0.5 + Math.random() * 0.6,
+          attractK: PARTICLE_ATTRACT_K,
+        });
+      }
+    }
+
+    // ---- soup fill: extra loose particles scattered across the cloud's
+    // whole bounding area, each attracted only to whichever anchor happens
+    // to be nearest. Because they're seeded randomly across the full
+    // footprint (not just near one anchor), a bunch of them land in the
+    // gaps *between* puffs, so the cloud reads as a randomized, soupy haze
+    // filling out its silhouette rather than a few distinct blobs with
+    // empty space between them. Their pull toward that anchor is much
+    // weaker than the core particles' too, so they hang looser and drift
+    // more freely -- reinforcing the soup feel instead of snapping into
+    // the same tight clusters.
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const a of anchors) {
+      minX = Math.min(minX, a.ox - a.r); maxX = Math.max(maxX, a.ox + a.r);
+      minY = Math.min(minY, a.oy - a.r); maxY = Math.max(maxY, a.oy + a.r);
+    }
+    const hazeCount = Math.round(anchors.length * 3);
+    for (let i = 0; i < hazeCount; i++) {
+      const ox = minX + Math.random() * (maxX - minX);
+      const oy = minY + Math.random() * (maxY - minY);
+      let best = anchors[0], bestD = Infinity;
+      for (const a of anchors) {
+        const d = (a.ox - ox) ** 2 + (a.oy - oy) ** 2;
+        if (d < bestD) { bestD = d; best = a; }
+      }
+      particles.push({
+        ax: best.ox, ay: best.oy,
+        ox, oy,
+        vx: (Math.random() - 0.5) * 0.15,
+        vy: (Math.random() - 0.5) * 0.15,
+        r: best.r * (0.18 + Math.random() * 0.22), // small soupy wisps, well under the core blob size
+        alpha: 0.22 + Math.random() * 0.28,
+        wobblePhase: Math.random() * Math.PI * 2,
+        wobbleFreq: 0.08 + Math.random() * 0.15,
+        wobbleAmp: 0.9 + Math.random() * 1.1, // wanders looser than the core particles
+        attractK: PARTICLE_ATTRACT_K * 0.35, // much weaker pull -- drifts rather than clustering tightly
+      });
+    }
+
+    return particles;
+  }
+
+  const PARTICLE_ATTRACT_K = 1.6; // strength of the pull back toward the (wandering) anchor point -- the only force shaping the cloud
+  const PARTICLE_DAMPING = 0.90;  // velocity damping per second-ish so particles settle into a gentle drift instead of oscillating forever
+
+  // advances every particle in a cloud by one tick. The ONLY force applied
+  // is attraction toward a target point -- and that target itself wanders
+  // slowly (a slow sine wobble around the anchor), so particles are always
+  // chasing a moving point rather than converging and freezing in place.
+  // This keeps every particle genuinely free-flying while the attraction
+  // keeps the swarm loosely bound into the cloud's overall silhouette.
+  function updateCloudParticles(c, dtSec) {
+    for (const p of c.particles) {
+      const wobX = Math.sin(weatherSimTime * p.wobbleFreq + p.wobblePhase) * p.wobbleAmp;
+      const wobY = Math.cos(weatherSimTime * p.wobbleFreq * 1.3 + p.wobblePhase) * p.wobbleAmp * 0.6;
+      const tx = p.ax + wobX, ty = p.ay + wobY;
+      const dx = tx - p.ox, dy = ty - p.oy;
+      p.vx += dx * p.attractK * dtSec;
+      p.vy += dy * p.attractK * dtSec;
+      const damp = Math.pow(PARTICLE_DAMPING, dtSec * 60);
+      p.vx *= damp;
+      p.vy *= damp;
+      p.ox += p.vx * dtSec;
+      p.oy += p.vy * dtSec;
+    }
+  }
+
+  // spawns a fresh cloud at the given world x, at a random height within
+  // the cloud band. `opts` lets the mini decorative wisps reuse this same
+  // machinery at a smaller scale, forced to the plain cumulus shape, with
+  // no gameplay effect (no cover, no rain), and floating across a wider
+  // vertical range than the real weather clouds.
+  function makeCloud(x, opts = {}) {
+    const scale = opts.scale ?? 1;
+    const type = opts.forceType || pickCloudType();
+    let anchors = sculptCloudAnchors(type).sort((a, b) => b.oy - a.oy);
+    if (scale !== 1) anchors = anchors.map(p => ({ ox: p.ox * scale, oy: p.oy * scale, r: p.r * scale }));
+    const def = CLOUD_TYPES[type];
+    const minY = opts.minY ?? CLOUD_MIN_Y, maxY = opts.maxY ?? CLOUD_MAX_Y;
+    const rainRate = opts.mini ? 0 : def.rainRate;
+    // rain-bearing clouds are heavy, low-pressure systems -- they drift far
+    // slower than the light, dry cumulus scattered around them
+    const baseSpeed = opts.windSpeed ?? WIND_SPEED;
+    const speed = baseSpeed * (rainRate > 0 ? 0.2 : 1); // 5x slower for anything that rains
+    return {
+      type,
+      x,
+      y: minY + Math.random() * (maxY - minY),
+      width: cloudWidthOf(anchors),
+      anchors,
+      particles: buildCloudParticles(anchors),
+      rainRate,
+      cover: opts.mini ? 0 : def.cover,
+      speed,
+      bobPhase: Math.random() * Math.PI * 2,
+      bobFreq: 0.15 + Math.random() * 0.1,
+      mini: !!opts.mini,
+    };
+  }
+
+  // generic seed pass: spreads clouds across the whole simulated window on
+  // load, each offset from the last by a randomized gap so nothing overlaps
+  // at spawn. Shared by the real weather deck and the mini decorative wisps.
+  function seedCloudList(gapMin, gapMax, opts, countGuardMult) {
+    const list = [];
+    let leftEdge = player.x - WEATHER_RADIUS;
+    const farEdge = player.x + WEATHER_RADIUS;
+    let guard = 0;
+    const guardMax = Math.max(8, Math.round((WEATHER_RADIUS * 2) / ((gapMin + gapMax) / 2 + 6))) * countGuardMult;
+    while (leftEdge < farEdge && guard++ < guardMax) {
+      const o = typeof opts === 'function' ? opts() : opts;
+      const c = makeCloud(leftEdge, o); // provisional center, corrected below once width is known
+      c.x = leftEdge + c.width / 2;
+      list.push(c);
+      leftEdge = c.x + c.width / 2 + rollCloudGap(gapMin, gapMax);
+    }
+    return list;
+  }
+
+  // generic recycle pass: whichever cloud in the list has drifted out of
+  // the simulated window comes back in at the entry edge as a brand new
+  // (re-sculpted) cloud, placed a randomized gap behind whichever cloud in
+  // the list is currently leftmost so recycled clouds never bunch up.
+  function recycleCloudList(list, gapMin, gapMax, opts) {
+    let leftmostX = Infinity;
+    for (const c of list) leftmostX = Math.min(leftmostX, c.x - c.width / 2);
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i];
+      if (c.x - player.x > WEATHER_RADIUS + c.width) {
+        const gap = rollCloudGap(gapMin, gapMax);
+        const spawnRightEdge = Math.min(leftmostX - gap, player.x - WEATHER_RADIUS);
+        const o = typeof opts === 'function' ? opts() : opts;
+        const nc = makeCloud(0, o); // provisional center, corrected below once width is known
+        nc.x = spawnRightEdge - nc.width / 2;
+        list[i] = nc;
+        leftmostX = nc.x - nc.width / 2;
+      }
+    }
+  }
+
+  // mini-cloud spawn options: always plain cumulus shape, scaled way down,
+  // and floating across a taller band than the real weather clouds
+  const miniCloudOpts = () => ({
+    scale: MINI_CLOUD_SCALE_MIN + Math.random() * (MINI_CLOUD_SCALE_MAX - MINI_CLOUD_SCALE_MIN),
+    forceType: 'cumulus',
+    minY: MINI_CLOUD_MIN_Y,
+    maxY: MINI_CLOUD_MAX_Y,
+    mini: true,
+    windSpeed: MINI_WIND_SPEED,
+  });
+
+  const clouds = seedCloudList(CLOUD_GAP_MIN, CLOUD_GAP_MAX, {}, 3);
+  const miniClouds = seedCloudList(MINI_CLOUD_GAP_MIN, MINI_CLOUD_GAP_MAX, miniCloudOpts, 3);
+
+  // every frame: just drift each cloud along the constant wind, plus a
+  // gentle vertical bob for life. No collision, no neighbor search --
+  // clouds live entirely above the terrain.
+  let weatherSimTime = 0;
+  function updateWeatherParticlesMotion(dt) {
+    const dtSec = dt / 1000;
+    weatherSimTime += dtSec;
+    for (const c of clouds) {
+      c.x += c.speed * dtSec;
+      updateCloudParticles(c, dtSec);
+    }
+    for (const c of miniClouds) {
+      c.x += c.speed * dtSec;
+      updateCloudParticles(c, dtSec);
+    }
+  }
+
+  // slower tick: recycles any cloud (or mini-cloud) that's drifted out of
+  // the simulated window back in at the entry edge as a brand new
+  // (re-sculpted) cloud, placed a randomized gap behind whichever cloud in
+  // its own list is currently leftmost so recycled clouds never bunch up.
+  function weatherTick(tickMs) {
+    recycleCloudList(clouds, CLOUD_GAP_MIN, CLOUD_GAP_MAX, {});
+    recycleCloudList(miniClouds, MINI_CLOUD_GAP_MIN, MINI_CLOUD_GAP_MAX, miniCloudOpts);
+  }
+
+  // general cloud cover at a column, 0 (clear) to 1 (fully overcast) --
+  // used to tint the sky and to slow/speed the ocean's waves.
+  function cloudCoverAt(x) {
+    let cover = 0;
+    for (const c of clouds) {
+      const half = c.width / 2;
+      const d = Math.abs(x - c.x);
+      if (d < half) {
+        const edge = 1 - (d / half) * 0.5; // fuller under the cloud's middle
+        cover = Math.max(cover, c.cover * edge);
+      }
+    }
+    return Math.max(0, Math.min(1, cover));
+  }
+
+  // rain intensity at a column, 0 (none) to 1 (heaviest downpour) -- only
+  // stratonimbus/cumulonimbus clouds ever contribute.
+  function rainIntensityAt(x) {
+    let intensity = 0;
+    for (const c of clouds) {
+      if (!c.rainRate) continue;
+      const half = c.width / 2;
+      if (Math.abs(x - c.x) < half * 0.85) intensity = Math.max(intensity, c.rainRate);
+    }
+    return intensity;
+  }
+
+  // the underside y of whichever raining cloud currently covers this
+  // column, so rain visibly starts falling from the cloud itself
+  function cloudBottomAt(x) {
+    let bottom = null;
+    for (const c of clouds) {
+      if (!c.rainRate) continue;
+      const half = c.width / 2;
+      if (Math.abs(x - c.x) < half * 0.85) {
+        let maxOy = -Infinity;
+        for (const p of c.anchors) maxOy = Math.max(maxOy, p.oy + p.r);
+        const b = c.y + maxOy;
+        if (bottom === null || b > bottom) bottom = b;
+      }
+    }
+    return bottom ?? CLOUD_MAX_Y;
+  }
+
+  // storm-only cover at a column, 0-1 -- unlike cloudCoverAt (which counts
+  // every cloud type, cumulus included) this only counts rain-bearing
+  // clouds, so it can be used to grey the sky specifically under a storm's
+  // footprint rather than under any old fair-weather puff.
+  function stormCoverAt(x) {
+    let cover = 0;
+    for (const c of clouds) {
+      if (!c.rainRate) continue;
+      const half = c.width / 2;
+      const d = Math.abs(x - c.x);
+      if (d < half) {
+        const edge = 1 - (d / half) * 0.5;
+        cover = Math.max(cover, c.cover * edge);
+      }
+    }
+    return Math.max(0, Math.min(1, cover));
+  }
+
+  // smoothed toward the player's actual overhead storm cover each frame, so
+  // the extra dark tint doesn't flicker with every weather tick
+  let stormOvercast = 0;
+
+  // smoothed toward the player's actual overhead cloud cover each frame, so
+  // the sky tint doesn't flicker with every weather tick
+  let skyOvercast = 0;
+
+  // ---- lightning ----
+  // Only genuine thunderstorm clouds (cumulonimbus) ever strike lightning
+  // -- plain rain clouds (stratonimbus) never do, same as in reality.
+  // Storm clouds occasionally strike lightning. The strike location is
+  // rolled anywhere under the *storm cloud's own* footprint, which is far
+  // wider than the player's 16x16 view, so a strike very often lands well
+  // outside what's currently on screen -- in that case there's no visible
+  // bolt, only the flash below. But if the player is standing anywhere
+  // within the storm's domain (the same footprint rain falls in), the
+  // flash always happens for them regardless of where exactly the bolt
+  // landed or whether it's in view, because a real lightning flash lights
+  // up the whole sky, not just the ground right under it.
+  const LIGHTNING_CHANCE_PER_SEC = 0.05; // chance per second for a cumulonimbus storm cloud to strike -- stratonimbus (plain rain) never strikes
+  const LIGHTNING_FLASH_DECAY = 3.2;     // per-second decay rate of the screen flash
+  const LIGHTNING_BOLT_TTL = 220;        // ms a visible bolt stays drawn once struck
+
+  let screenFlash = 0; // 0..1 -- drives a translucent white overlay across the whole screen
+  const lightningBolts = []; // visible zigzag bolts: {x, points, ttl}
+
+  function buildBoltPoints(topY, bottomY) {
+    const steps = 5 + Math.floor(Math.random() * 3);
+    const pts = [];
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const y = topY + (bottomY - topY) * t;
+      const dx = (i === 0 || i === steps) ? 0 : (Math.random() - 0.5) * 1.6;
+      pts.push({ dx, y });
+    }
+    return pts;
+  }
+
+  function strikeLightning(c) {
+    const half = c.width / 2;
+    // same footprint rain uses -- if the player is anywhere under it, they
+    // see/feel the flash, cloud or bolt on screen or not. Also requires the
+    // player to actually be below the cloud deck (same 10-block rule as the
+    // grey overcast tint) -- someone up above the clouds on a mountain peak
+    // wouldn't see a flash light up the sky from below them.
+    const inDomain = Math.abs(player.x - c.x) < half * 0.85;
+    const belowClouds = player.y >= CLOUD_MAX_Y + 10;
+    if (inDomain && belowClouds) screenFlash = 0.8 + Math.random() * 0.2;
+
+    // the actual strike point, purely for the (maybe-visible) bolt itself
+    const strikeX = Math.round(c.x + (Math.random() - 0.5) * half * 1.4);
+    let maxOy = -Infinity;
+    for (const p of c.anchors) maxOy = Math.max(maxOy, p.oy + p.r);
+    const topY = c.y + maxOy;
+    const bottomY = frontHeightAt(strikeX);
+    lightningBolts.push({ x: strikeX, points: buildBoltPoints(topY, bottomY), ttl: LIGHTNING_BOLT_TTL });
+  }
+
+  function updateLightning(dt) {
+    const dtSec = dt / 1000;
+    if (screenFlash > 0) screenFlash = Math.max(0, screenFlash - LIGHTNING_FLASH_DECAY * dtSec);
+    for (let i = lightningBolts.length - 1; i >= 0; i--) {
+      lightningBolts[i].ttl -= dt;
+      if (lightningBolts[i].ttl <= 0) lightningBolts.splice(i, 1);
+    }
+    for (const c of clouds) {
+      if (c.type !== 'cumulonimbus') continue; // only genuine thunderstorm clouds strike -- plain rain (stratonimbus) never does
+      if (Math.random() < LIGHTNING_CHANCE_PER_SEC * c.rainRate * dtSec) strikeLightning(c);
+    }
+  }
+
+  function drawLightningBolts(camX, camY) {
+    for (const b of lightningBolts) {
+      const relX = b.x - camX;
+      if (relX < -2 || relX > COLS + 2) continue; // outside the current view -- only the flash carries, no visible bolt
+      const alpha = Math.max(0, b.ttl / LIGHTNING_BOLT_TTL);
+      ctx.strokeStyle = `rgba(255,255,240,${alpha.toFixed(2)})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let i = 0; i < b.points.length; i++) {
+        const p = b.points[i];
+        const x = (relX + p.dx) * BLOCK, y = (p.y - camY) * BLOCK;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+  }
+
+  // a real, currently-open water tile: used by the wave system so ripples
+  // only ever rise from an actual visible water surface.
+  //
+  // This one check already gives ocean waves both behaviors asked for:
+  // - if a block sits on top of the ocean's surface tile, that tile's
+  //   "above" is no longer SKY, so it stops counting as open and its
+  //   waves stop displaying, exactly as if the ocean had been paved over
+  // - if the surface-level tile itself is missing/removed while the water
+  //   beneath it is untouched, the row below it now has SKY directly
+  //   above (where the removed tile used to be), so the scan below finds
+  //   *that* row open instead -- the waves fall down to whichever water
+  //   is actually the lowest exposed one, without any separate lookup
+  // Since drawWaterSurfaceWaves scans every on-screen row/column rather
+  // than assuming water always sits at a fixed sea-level row, both cases
+  // just fall out of the same check with no special-casing needed.
+  function isOpenWaterSurface(x, y) {
+    const t = blockAtLayer(0, x, y);
+    if (!isWaterTile(t)) return false;
+    const above = blockAtLayer(0, x, y - 1);
+    return above === SKY;
+  }
+
+  // ---- water surface waves --------------------------------------------
+  // Wave height is a pure function of how deep the water is at that column
+  // (see oceanDepthAt below) -- a shallow pond naturally comes out flat and
+  // a deep body of water naturally gets real swells, with no separate
+  // lake-vs-ocean branching needed; it all falls out of the same terrain
+  // that decided where the water is in the first place.
+  // actual water depth at this column, in blocks -- zero right at the
+  // shoreline (where the bed rises to meet sea level) and deepening out
+  // toward the middle of the body of water. Row numbers increase downward
+  // in this world, so a deeper bed has a *larger* row than sea level --
+  // depth is bed-row minus sea-level-row, not the other way round.
+  function oceanDepthAt(worldX) {
+    return Math.max(0, frontHeightAt(worldX) - SEA_LEVEL);
+  }
+  // storms whip the sea up; clear skies leave it calm. cloudCoverAt already
+  // captures "weather overhead" in general, and rainIntensityAt captures an
+  // actual downpour on top of that, so a genuine storm compounds both.
+  // Normal/clear weather is the 1x baseline.
+  function weatherWaveFactorAt(worldX) {
+    const col = Math.round(worldX);
+    const cover = cloudCoverAt(col);
+    const rain = rainIntensityAt(col);
+    return 1 + cover * 0.4 + rain * 0.4;
+  }
+  const OCEAN_BASELINE_WAVE_PX = 3; // normal-weather wave height, in raw canvas px, out in full-depth water
+  // depth right at the coast tapers from 0 down through the low single
+  // digits as the seafloor rises to meet the shore; by ~8 blocks down
+  // you're solidly out of the shallows and into open water, so that's
+  // "full depth" for wave purposes -- not the rare 18-block trench floor,
+  // which would leave most of the ocean looking artificially calm. Inland
+  // lakes, which only ever get a few blocks deep from rolling terrain
+  // alone, naturally stay well under this and so stay calm little ponds.
+  const OCEAN_SHALLOW_DEPTH = 2;
+  const OCEAN_FULL_DEPTH = 8;
+  function oceanMaxWaveHeightAt(worldX) {
+    const depth = oceanDepthAt(worldX);
+    if (depth <= OCEAN_SHALLOW_DEPTH) return 0;
+    // waves fade toward nothing as the water shallows near shore, and
+    // reach full strength once you're out past the immediate shallows
+    const depthFactor = Math.max(0, Math.min(1, (depth - OCEAN_SHALLOW_DEPTH) / (OCEAN_FULL_DEPTH - OCEAN_SHALLOW_DEPTH)));
+    const h = depthFactor * OCEAN_BASELINE_WAVE_PX * weatherWaveFactorAt(worldX);
+    return Math.max(0, Math.min(5, Math.round(h)));
+  }
+  // the tallest a wave is ever allowed to get at this column, in raw canvas
+  // pixels -- shared by both the renderer and the physics check below so
+  // they always agree on the ceiling, even though the *actual* height at
+  // any given instant is animated and almost always lower than this
+  const LAKE_MAX_WAVE_PX = 1; // inland lakes are hard-capped here, regardless of depth/weather -- oceans use the full depth-based ceiling above
+  function maxWaveHeightAt(worldX) {
+    const h = oceanMaxWaveHeightAt(worldX);
+    return oceanFactorAt(worldX) > 0 ? h : Math.min(LAKE_MAX_WAVE_PX, h);
+  }
+  // how many extra blocks of open air above a wave's still-water tile count
+  // as "in the water" for swimming purposes -- plain ripples and small chop
+  // don't extend the swimmable space at all, taller waves open up one extra
+  // block to swim in, and the biggest monstrous ocean swells open up two
+  function extraSwimBlocksAt(worldX) {
+    const h = maxWaveHeightAt(worldX);
+    if (h < 3) return 0;
+    return h < 5 ? 1 : 2;
+  }
+  // a smooth, wide rolling hump rather than independent per-pixel noise --
+  // the wavelength scales with how tall the wave is allowed to get, so a
+  // towering ocean swell is proportionally broad (like a real swell) instead
+  // of a narrow spike, and even small ripples read as gentle, rounded bumps
+  function waveEnvelopeAt(rawPx, tSec, maxH) {
+    const wavelength = 5 + maxH * 6;
+    const phase = rawPx / wavelength + tSec * 0.3;
+    const hump = (Math.sin(phase * Math.PI * 2) + 1) / 2; // smooth 0..1 rolling swell
+    const jitter = (noise1D(rawPx * 0.8 + tSec * 5, 42, 0.4) - 0.5) * 0.3; // light texture, not enough to spike
+    return Math.max(0, Math.min(1, hump + jitter));
+  }
+  // the actual, animated wave height right now (in raw canvas pixels) at
+  // this column -- the same calculation the renderer uses, so physics only
+  // ever lets you swim exactly as high as the crest currently, visibly, is.
+  // Takes the taller of the block's two raw-pixel sub-columns, since a
+  // block counts as "wave" if any part of it currently shows one.
+  function currentWaveHeightAt(worldX, tSec) {
+    const maxH = maxWaveHeightAt(worldX);
+    if (maxH <= 0) return 0;
+    let best = 0;
+    for (let i = 0; i < BLOCK; i++) {
+      const rawPx = worldX * BLOCK + i;
+      const envelope = waveEnvelopeAt(rawPx, tSec, maxH);
+      const h = Math.min(maxH, Math.round(envelope * maxH));
+      if (h > best) best = h;
+    }
+    return best;
+  }
+  // like fluidAt, but also treats the airspace a tall wave is *currently,
+  // visibly* risen into as swimmable -- checked against the real animated
+  // wave height, not just the tier's theoretical maximum, so you can't
+  // float in mid-air over a trough between waves
+  function fluidOrWaveAt(x, y) {
+    if (fluidAt(x, y)) return true;
+    if (blockAtLayer(0, x, y) !== SKY) return false;
+    const cap = extraSwimBlocksAt(x);
+    if (cap <= 0) return false;
+    const tSec = performance.now() / 1000;
+    const h = currentWaveHeightAt(x, tSec);
+    for (let d = 1; d <= cap; d++) {
+      if (!isOpenWaterSurface(x, y + d)) continue;
+      const neededPx = (d - 1) * BLOCK + 1; // how tall the crest must currently be to reach into block d
+      if (h >= neededPx) return true;
+    }
+    return false;
+  }
+  // the wave's own texture is literally cut from the water tile's own
+  // sprite (its top-row pixels), so a raised wave pixel is pixel-for-pixel
+  // identical to the water it's rising out of, not a separately invented color
+  function waterSourcePixel(i) {
+    const [sx, sy] = SHEET_POS[WATER];
+    return [sx + i, sy];
+  }
+  const WAVE_FOAM_HIGHLIGHT = 'rgba(255,255,255,0.32)'; // faint highlight dabbed on tall crest tips only
+  // draws animated ripples/waves rising above every open water surface
+  // currently on screen -- purely a visual overlay above the water tile
+  // itself, so the normal fluid-tile checks are untouched; fluidOrWaveAt
+  // (used for swim detection) separately checks this exact same height
+  // calculation to keep the swimmable space in sync with what's drawn
+  function drawWaterSurfaceWaves(camX, camY) {
+    const tSec = performance.now() / 1000;
+    for (let ry = 0; ry < ROWS; ry++) {
+      for (let rx = 0; rx < COLS; rx++) {
+        const worldX = camX + rx, worldY = camY + ry;
+        if (!isOpenWaterSurface(worldX, worldY)) continue;
+        const maxH = maxWaveHeightAt(worldX);
+        if (maxH <= 0) continue; // calm water: little to no ripple at all
+        const dx = rx * BLOCK, dy = ry * BLOCK;
+        for (let i = 0; i < BLOCK; i++) {
+          const rawPx = worldX * BLOCK + i;
+          const envelope = waveEnvelopeAt(rawPx, tSec, maxH);
+          const h = Math.min(maxH, Math.round(envelope * maxH));
+          if (h <= 0) continue;
+          const [sx, sy] = waterSourcePixel(i);
+          for (let k = 1; k <= h; k++) {
+            ctx.drawImage(sheet, sx, sy, 1, 1, dx + i, dy - k, 1, 1);
+            if (k === h && h >= 3) { // faint foam only dabbed on tall crest tips, over the real water texture
+              ctx.fillStyle = WAVE_FOAM_HIGHLIGHT;
+              ctx.fillRect(dx + i, dy - k, 1, 1);
+            }
+          }
+        }
+      }
+    }
+  }
+
+
+  const RAIN_SPAWN_MS = 160;      // how often raining columns get a chance to spawn a fresh drop
+  const RAIN_FALL_SPEED = 9;      // blocks/sec
+  const RAIN_MAX_PER_COLUMN = 3;  // hard cap so an intense downpour still never blocks the view
+  const rainDrops = []; // {x, y, colIndex}
+
+  // rain is simulated in a fixed 32x32 box centered on the player, not tied
+  // to the camera/view size.
+  const RAIN_SIM_RADIUS = 16; // half of 32
+
+  function currentCamera() {
+    return {
+      camX: Math.round(player.x - COLS / 2),
+      camY: Math.max(0, Math.min(WORLD_H - ROWS, Math.round(player.y - ROWS / 2))),
+    };
+  }
+
+  // per-column "rain owed" accumulator -- replaces a flat Math.random() roll
+  // each tick. A pure probability check makes spawns arrive in uneven
+  // clumps (some ticks roll multiple hits in a row, others miss for a
+  // while), which reads as visible pulsing rather than steady rain,
+  // especially at low intensity. Accumulating fractional credit each tick
+  // and spawning once it crosses 1 spaces drops out evenly instead.
+  const rainCredit = new Map(); // colIndex -> accumulated credit
+
+  function spawnRain() {
+    const px = Math.round(player.x), py = Math.round(player.y);
+    const loX = px - RAIN_SIM_RADIUS, hiX = px + RAIN_SIM_RADIUS;
+    const loY = py - RAIN_SIM_RADIUS, hiY = py + RAIN_SIM_RADIUS;
+    // drop credit for columns that have moved out of the sim box so the
+    // map doesn't grow forever
+    for (const x of rainCredit.keys()) {
+      if (x < loX || x >= hiX) rainCredit.delete(x);
+    }
+    // clouds sit 30-60 blocks above the ground, which can be far taller
+    // than the 32x32 sim box, so a drop's total fall from cloud to ground
+    // may start above the box entirely. RAIN_MAX_PER_COLUMN is meant to
+    // cap how much rain is visible/simulated around the player at once --
+    // if it instead caps every drop in flight across the *entire*
+    // cloud-to-ground distance, only a handful of drops ever exist per
+    // column over that whole span, which spaces them out into sparse,
+    // widely-gapped bursts by the time they reach the player. Counting
+    // only drops actually inside the sim box keeps the cap doing its
+    // intended job (never overwhelming the view) while letting drops
+    // exist in the stretch still falling above the box, so the box reads
+    // as steady rain instead of occasional pulses.
+    for (let x = loX; x < hiX; x++) {
+      const intensity = rainIntensityAt(x);
+      if (intensity <= 0) {
+        rainCredit.delete(x);
+        continue;
+      }
+      const cap = 1 + Math.round(intensity * (RAIN_MAX_PER_COLUMN - 1));
+      const existingInBox = rainDrops.reduce(
+        (n, d) => n + (d.colIndex === x && d.y >= loY && d.y <= hiY ? 1 : 0), 0
+      );
+      if (existingInBox >= cap) {
+        // don't let credit pile up unboundedly while the box is full, or
+        // it'd dump several drops at once the moment a slot frees up
+        rainCredit.set(x, Math.min(rainCredit.get(x) || 0, 1));
+        continue;
+      }
+      const credit = (rainCredit.get(x) || 0) + intensity * 0.85;
+      if (credit >= 1) {
+        // spawn just above the top of the sim box (or the cloud's own
+        // underside if that's lower, i.e. closer to the ground) so drops
+        // that start their fall outside the box don't have to be
+        // simulated the whole way down from the actual cloud
+        const bottom = Math.max(cloudBottomAt(x), loY - 1);
+        // every drop otherwise falls at the exact same fixed speed, so any
+        // drops released around the same moment (e.g. right as a capped
+        // column frees up a slot) stay locked together for the entire
+        // fall, like cars in a traffic jam that never spread out --
+        // reappearing as a synchronized clump each time they cross the
+        // sim box instead of steady rain. A little per-drop speed
+        // variance desyncs them over the fall so they arrive spread out.
+        const fallSpeed = RAIN_FALL_SPEED * (0.8 + Math.random() * 0.4);
+        rainDrops.push({ x: x + 0.5, y: bottom + 1, colIndex: x, fallSpeed });
+        rainCredit.set(x, credit - 1);
+      } else {
+        rainCredit.set(x, credit);
+      }
+    }
+  }
+
+  function updateRain(dt) {
+    const dtSec = dt / 1000;
+    const py = Math.round(player.y);
+    const tSec = performance.now() / 1000;
+    for (let i = rainDrops.length - 1; i >= 0; i--) {
+      const d = rainDrops[i];
+      // landed last frame -- it already got one frame rendered resting on
+      // the surface/wave crest, so remove it now rather than let it fall
+      // straight through
+      if (d.landed) { rainDrops.splice(i, 1); continue; }
+      d.y += (d.fallSpeed ?? RAIN_FALL_SPEED) * dtSec;
+      const cx = Math.floor(d.x);
+      // drop leaves simulation once it falls out of the 32x32 box around
+      // the player, not once it leaves the camera/view
+      const outOfBox = d.y - py > RAIN_SIM_RADIUS + 4 || Math.abs(cx - Math.round(player.x)) > RAIN_SIM_RADIUS + 4;
+      if (d.y >= WORLD_H || outOfBox) { rainDrops.splice(i, 1); continue; }
+      const row = Math.floor(d.y);
+      if (solidAt(cx, row + 1)) {
+        d.y = row; // rest right on top of whatever it landed on
+        d.landed = true;
+        continue;
+      }
+      // a rain drop can only ever reach a fluid tile by falling straight
+      // down through open sky, so the very first fluid row it reaches is
+      // necessarily that body of water's actual open surface -- no
+      // separate top-of-water lookup needed here
+      if (fluidAt(cx, row) && isWaterTile(blockAt(cx, row))) {
+        let surfaceY = row;
+        // ocean waves visibly rise above the flat water tile (see
+        // drawWaterSurfaceWaves); let the drop rest at the current,
+        // animated crest height instead of sinking down to the flat tile
+        // underneath, so it reads as striking the wave itself. This is
+        // ocean-specific -- lakes/ponds keep the flat stop, since their
+        // ripple is a much smaller cosmetic wobble, not a real swell.
+        if (oceanFactorAt(cx) > 0.02) {
+          const waveH = currentWaveHeightAt(cx, tSec); // raw canvas px
+          surfaceY -= waveH / BLOCK;
+        }
+        d.y = surfaceY;
+        d.landed = true;
+        continue;
+      }
+    }
+  }
+
+  // ---- weather rendering ----
+  // Every cloud is drawn as its swarm of free-flying particles, each one a
+  // soft, transparent-edged blob (a radial gradient fading to nothing) in
+  // the single shared CLOUD_COLOR. There is no outline and no flat-filled
+  // circle: overlapping soft particles blend into a fuzzy, ever-shifting
+  // mass instead of a hard silhouette, and since every cloud type shares
+  // the same color, only the particles' density and layout differ between
+  // cumulus, stratonimbus, and cumulonimbus.
+  const [CR, CG, CB] = CLOUD_COLOR;
+  function drawCloudList(list, camX, camY) {
+    for (const c of list) {
+      const relX = c.x - camX;
+      const half = c.width / 2 + 1;
+      if (relX < -half || relX > COLS + half) continue;
+      const bob = Math.sin(weatherSimTime * c.bobFreq + c.bobPhase) * 0.3;
+      const relY = (c.y + bob) - camY;
+      for (const p of c.particles) {
+        const px = (relX + p.ox) * BLOCK;
+        const py = (relY + p.oy) * BLOCK;
+        const pr = p.r * BLOCK;
+        if (pr <= 0) continue;
+
+        const grad = ctx.createRadialGradient(px, py, 0, px, py, pr);
+        grad.addColorStop(0, `rgba(${CR},${CG},${CB},${p.alpha.toFixed(2)})`);
+        grad.addColorStop(0.7, `rgba(${CR},${CG},${CB},${(p.alpha * 0.5).toFixed(2)})`);
+        grad.addColorStop(1, `rgba(${CR},${CG},${CB},0)`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(px, py, pr, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+  function drawWeatherParticles(camX, camY) {
+    // mini decorative wisps drawn first (read as slightly further back),
+    // then the real weather deck on top
+    drawCloudList(miniClouds, camX, camY);
+    drawCloudList(clouds, camX, camY);
+  }
+
+  function drawRain(camX, camY) {
+    ctx.fillStyle = '#3d78e0'; // solid blue, single pixel per drop
+    for (const d of rainDrops) {
+      const relX = d.x - camX, relY = d.y - camY;
+      if (relX < 0 || relX >= COLS || relY < 0 || relY >= ROWS) continue;
+      ctx.fillRect(relX * BLOCK, relY * BLOCK, 1, 1);
     }
   }
 
@@ -602,12 +2208,6 @@
   function colSpan(x) { return [Math.floor(x), Math.floor(x + 0.999)]; }
 
   // ---- player ----
-  const player = {
-    x: 5, y: heightsArr[0][5] - 1, // block coords (float)
-    vx: 0, vy: 0,
-    hp: 10,
-  };
-
   // which layer mining/placing currently targets: 0 = front, 1 = background.
   // the player always physically stands on the front layer; this only changes
   // which layer clicking on the world affects
@@ -622,7 +2222,7 @@
   // movement, camera scrolling, or which screen (world/inventory/crafting)
   // is showing -- it's how every interaction is targeted now, instead of
   // mouse clicks.
-  const cursor = { x: Math.floor(VIEW / 2), y: Math.floor(VIEW / 2) };
+  const cursor = { x: 8, y: 6 }; // starts centered on the opening-screen play button
   function moveCursor(dx, dy) {
     cursor.x = Math.max(0, Math.min(VIEW - 1, cursor.x + dx));
     cursor.y = Math.max(0, Math.min(VIEW - 1, cursor.y + dy));
@@ -644,9 +2244,10 @@
     if (k >= '1' && k <= '8') selectSlot(Number(k) - 1);
 
     // enter = place/interact at the cursor (or the equivalent "click" on
-    // whatever UI screen is open); backspace = break a block at the cursor
+    // whatever UI screen is open); backspace = hold to break a block at the
+    // cursor (see updateBreaking, which reads keys['backspace'] every frame)
     if (k === 'enter') { e.preventDefault(); handleInteract(); }
-    else if (k === 'backspace') { e.preventDefault(); handleBreak(); }
+    else if (k === 'backspace') { e.preventDefault(); }
   });
   window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 
@@ -654,6 +2255,36 @@
   window.addEventListener('keydown', e => {
     const k = e.key.toLowerCase();
     if (k === 'l') { toggleActiveLayer(); e.preventDefault(); }
+  });
+
+  // ---- Q: drop the currently-held item, but only on the third tap in quick
+  // succession (mirrors the stick-ignite spam-tap pattern above) -- keeps a
+  // single accidental press from tossing something out. Drops at the cursor's
+  // world position (same target used for placing/breaking), falling back to
+  // the player's own position if the cursor's off the edge of the world.
+  const Q_DROP_TAPS = 3;
+  const Q_DROP_WINDOW_MS = 600;
+  let qDropCount = 0, qDropTime = 0;
+  function dropHeldItem() {
+    if (invOpen || craftOpen || tableCraftOpen) return; // only out in the world
+    const held = hotbarSlots[selectedIndex];
+    if (!held) return;
+    const pos = cursorWorldPos();
+    spawnItemDrop(held.type, 1, pos ? pos.worldX : player.x, pos ? pos.worldY : player.y);
+    held.count--;
+    if (held.count <= 0) hotbarSlots[selectedIndex] = null;
+  }
+  window.addEventListener('keydown', e => {
+    if (e.repeat) return; // ignore OS key-repeat from holding Q down
+    const k = e.key.toLowerCase();
+    if (k !== 'q') return;
+    const now = performance.now();
+    qDropCount = (now - qDropTime < Q_DROP_WINDOW_MS) ? qDropCount + 1 : 1;
+    qDropTime = now;
+    if (qDropCount >= Q_DROP_TAPS) {
+      qDropCount = 0;
+      dropHeldItem();
+    }
   });
 
   // ---- touch d-pad / jump ----
@@ -670,14 +2301,59 @@
   bindHold(document.getElementById('btnRight'), 'd');
   bindHold(document.getElementById('btnJump'), ' ');
 
-  // ---- mine/place mode toggle (mobile) ----
-  let touchMode = 'mine';
-  const btnMode = document.getElementById('btnMode');
-  if (btnMode) {
-    btnMode.addEventListener('click', () => {
-      touchMode = touchMode === 'mine' ? 'place' : 'mine';
-      btnMode.textContent = touchMode === 'mine' ? 'MINE' : 'PLACE';
-      btnMode.classList.toggle('place', touchMode === 'place');
+  // ---- cursor d-pad (mobile): moves the white pixel reticle. Tapping moves
+  // it one step; holding down repeats, mirroring how a held arrow key auto-repeats ----
+  function bindRepeat(el, fn) {
+    if (!el) return;
+    let interval = null;
+    const start = e => {
+      e.preventDefault();
+      el.classList.add('pressed');
+      fn();
+      interval = setInterval(fn, 150);
+    };
+    const stop = e => {
+      if (e) e.preventDefault();
+      el.classList.remove('pressed');
+      if (interval) { clearInterval(interval); interval = null; }
+    };
+    el.addEventListener('pointerdown', start);
+    el.addEventListener('pointerup', stop);
+    el.addEventListener('pointerleave', stop);
+    el.addEventListener('pointercancel', stop);
+  }
+  bindRepeat(document.getElementById('curUp'), () => moveCursor(0, -1));
+  bindRepeat(document.getElementById('curDown'), () => moveCursor(0, 1));
+  bindRepeat(document.getElementById('curLeft'), () => moveCursor(-1, 0));
+  bindRepeat(document.getElementById('curRight'), () => moveCursor(1, 0));
+
+  // ---- place/interact (mobile): same as Enter, tap to place/interact/click
+  // whatever's under the cursor. Spammable, so a stick can still set things
+  // on fire by repeatedly tapping PLACE on it ----
+  function bindTap(el, fn) {
+    if (!el) return;
+    el.addEventListener('pointerdown', e => { e.preventDefault(); el.classList.add('pressed'); fn(); });
+    const release = e => { if (e) e.preventDefault(); el.classList.remove('pressed'); };
+    el.addEventListener('pointerup', release);
+    el.addEventListener('pointerleave', release);
+    el.addEventListener('pointercancel', release);
+  }
+  bindTap(document.getElementById('btnPlace'), () => handleInteract());
+  // ---- drop (mobile): a single tap drops the held item directly -- the
+  // triple-tap requirement on keyboard Q exists to guard against an accidental
+  // key press, which doesn't apply to a dedicated on-screen button ----
+  bindTap(document.getElementById('btnDrop'), () => dropHeldItem());
+  // ---- break (mobile): same as holding Backspace -- hold the button down
+  // until the targeted block's crack overlay fills in and it breaks ----
+  bindHold(document.getElementById('btnBreak'), 'backspace');
+
+  // ---- hotbar quick-select (mobile), mirrors the 1-8 number keys ----
+  document.querySelectorAll('#hotbarSelect .hotbtn').forEach(btn => {
+    btn.addEventListener('click', () => selectSlot(Number(btn.dataset.slot)));
+  });
+  function updateHotbarSelectButtons() {
+    document.querySelectorAll('#hotbarSelect .hotbtn').forEach(btn => {
+      btn.classList.toggle('active', Number(btn.dataset.slot) === selectedIndex);
     });
   }
 
@@ -696,6 +2372,8 @@
   const HOTBAR_SIZE = 8;
   const INV_COLS = 8, INV_ROWS = 4, INV_SIZE = INV_COLS * INV_ROWS;
   const STACK_MAX = 16;
+  // tools and buckets only ever stack to 1; everything else uses STACK_MAX
+  function stackMaxFor(type) { return SINGLE_STACK_TYPES.has(type) ? 1 : STACK_MAX; }
 
   const hotbarSlots = new Array(HOTBAR_SIZE).fill(null);
   const inventorySlots = new Array(INV_SIZE).fill(null);
@@ -706,12 +2384,20 @@
   const craftSlots = new Array(CRAFT_SIZE).fill(null);
   const craftOutputVirtual = [null];
 
+  // placed crafting-table block's UI: same idea, but a 3x3 input grid, opened
+  // by interacting with a CRAFTING_TABLE block out in the world
+  const TABLE_CRAFT_SIZE = 9;
+  const tableCraftSlots = new Array(TABLE_CRAFT_SIZE).fill(null);
+  const tableOutputVirtual = [null];
+
   // starter kit so there's something to build with / demo the UI
   hotbarSlots[0] = { type: GRASS, count: 5 };
   hotbarSlots[1] = { type: DIRT, count: 16 };
   hotbarSlots[2] = { type: STONE, count: 16 };
   hotbarSlots[3] = { type: WOOD, count: 8 };
   hotbarSlots[4] = { type: LEAF, count: 8 };
+  hotbarSlots[5] = { type: COBBLESTONE, count: 16 };
+  hotbarSlots[6] = { type: BRICK, count: 16 };
 
   // a few items in the backpack too, so the new item icons are visible right away
   inventorySlots[0] = { type: STICK, count: 6 };
@@ -724,31 +2410,39 @@
   inventorySlots[7] = { type: COPPER_PICKAXE, count: 1 };
   inventorySlots[8] = { type: IRON_AXE, count: 1 };
   inventorySlots[9] = { type: COPPER_AXE, count: 1 };
+  inventorySlots[10] = { type: STONE_SWORD, count: 1 };
+  inventorySlots[11] = { type: STONE_PICKAXE, count: 1 };
+  inventorySlots[12] = { type: STONE_AXE, count: 1 };
+  inventorySlots[13] = { type: BUCKET_EMPTY, count: 1 };
+  inventorySlots[14] = { type: FURNACE, count: 4 };
+  inventorySlots[15] = { type: CLAY, count: 8 };
+  inventorySlots[16] = { type: SAND, count: 16 };
 
   let selectedIndex = 1; // which hotbar slot is active for placing blocks
-  const HOTBAR_Y = VIEW - 1;           // bottom pixel row of the world canvas
-  const HOTBAR_X0 = (VIEW - 8) / 2;    // center the 8 slots horizontally
+  const HOTBAR_Y = VIEW - BLOCK;        // top pixel row of the full-res hotbar strip
 
   function selectSlot(i) {
     if (hotbarSlots[i] === null) return; // empty slots aren't selectable
     selectedIndex = i;
+    updateHotbarSelectButtons();
   }
 
   function updateSelName() {
     const s = hotbarSlots[selectedIndex];
     document.getElementById('selName').textContent = s ? `${NAMES[s.type]} x${s.count}` : 'empty';
     document.getElementById('layerName').textContent = activeLayer === 0 ? 'front' : 'background';
+    updateHotbarSelectButtons();
   }
 
   // find a slot (hotbar checked first, then backpack) with room in its stack
   function findStackWithRoom(type) {
     for (let i = 0; i < hotbarSlots.length; i++) {
       const s = hotbarSlots[i];
-      if (s && s.type === type && s.count < STACK_MAX) return { group: 'hotbar', index: i };
+      if (s && s.type === type && s.count < stackMaxFor(type)) return { group: 'hotbar', index: i };
     }
     for (let i = 0; i < inventorySlots.length; i++) {
       const s = inventorySlots[i];
-      if (s && s.type === type && s.count < STACK_MAX) return { group: 'inv', index: i };
+      if (s && s.type === type && s.count < stackMaxFor(type)) return { group: 'inv', index: i };
     }
     return null;
   }
@@ -757,7 +2451,9 @@
     for (let i = 0; i < inventorySlots.length; i++) if (!inventorySlots[i]) return { group: 'inv', index: i };
     return null;
   }
-  // adds 1 of `type` to an existing stack or a free slot; drops it if full
+  // adds 1 of `type` to an existing stack or a free slot; returns false (adds
+  // nothing) if there's no room -- callers are responsible for dropping it on
+  // the ground themselves in that case, via spawnItemDrop below
   function pickupBlock(type) {
     let loc = findStackWithRoom(type) || findEmptySlot();
     if (!loc) return false;
@@ -767,18 +2463,137 @@
     return true;
   }
 
-  function drawHotbar() {
-    const blink = Math.floor(performance.now() / 400) % 2 === 0;
-    for (let i = 0; i < 8; i++) {
-      const s = hotbarSlots[i];
-      let color = '#000000';
-      if (s && AVG_COLOR[s.type]) {
-        const [r, g, b] = AVG_COLOR[s.type];
-        color = `rgb(${r},${g},${b})`;
+  // adds up to `count` of `type` into the inventory, one at a time (so it
+  // naturally spreads across partial stacks and free slots the same way
+  // pickupBlock does); returns how many actually got added
+  function addItemsToInventory(type, count) {
+    let added = 0;
+    while (added < count && pickupBlock(type)) added++;
+    return added;
+  }
+
+  // ---- dropped items: little bobbing pixels on the ground ----
+  // when something can't fit in the inventory (a full-inventory block break,
+  // or leftover items in a crafting grid when its menu is closed), it's
+  // dropped in the world instead of just vanishing -- rendered as a single
+  // pixel colored with the average of the item's sprite. It actually falls
+  // (a quick, light drop rather than the player's full gravity, just enough
+  // to read as motion) until it lands, then gently bobs in place, and is
+  // picked up automatically once a player with room walks over it.
+  const itemDrops = []; // {type, count, x (tile col), y (float row), vy, landed, bornAt}
+  const DROP_PICKUP_DELAY_MS = 300; // brief grace period so it doesn't insta-repick what you just dropped
+  const DROP_GRAV = 0.05; // faster-settling than the player's own gravity -- a light little hop down
+  const DROP_MAX_FALL = 0.5;
+  const avgColorCache = {};
+
+  function averageColorFor(type) {
+    if (avgColorCache[type]) return avgColorCache[type];
+    const isItem = ITEMS.has(type);
+    const img = isItem ? itemSheet : sheet;
+    const pos = isItem ? ITEM_SHEET_POS[type] : SHEET_POS[type];
+    let color = '#ffffff';
+    if (pos && img.complete && img.naturalWidth > 0) {
+      const [sx, sy] = pos;
+      const tmp = document.createElement('canvas');
+      tmp.width = BLOCK; tmp.height = BLOCK;
+      const tctx = tmp.getContext('2d');
+      tctx.drawImage(img, sx, sy, BLOCK, BLOCK, 0, 0, BLOCK, BLOCK);
+      const data = tctx.getImageData(0, 0, BLOCK, BLOCK).data;
+      let r = 0, g = 0, b = 0, n = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i + 3] === 0) continue; // skip transparent pixels
+        r += data[i]; g += data[i + 1]; b += data[i + 2]; n++;
       }
-      if (i === selectedIndex && blink) color = '#ffffff';
-      ctx.fillStyle = color;
-      ctx.fillRect(HOTBAR_X0 + i, HOTBAR_Y, 1, 1);
+      if (n > 0) color = `rgb(${Math.round(r / n)},${Math.round(g / n)},${Math.round(b / n)})`;
+      avgColorCache[type] = color; // only cache once the sheet's actually decoded
+    }
+    return color;
+  }
+
+  // drops `count` of `type` at tile (x,y) -- it doesn't snap to the ground
+  // immediately, it actually falls there over the next few frames (see
+  // updateItemDrops), just quickly enough to still feel snappy
+  function spawnItemDrop(type, count, x, y) {
+    if (count <= 0) return;
+    const tx = Math.round(x);
+    itemDrops.push({ type, count, x: tx, y, vy: 0, landed: false, bornAt: performance.now() });
+  }
+
+  // called every frame out in the world: falls any still-airborne drops
+  // toward the ground, then lets the player walk over landed ones to pick up
+  // whatever fits, leaving the rest (if any) sitting there
+  function updateItemDrops() {
+    const now = performance.now();
+    const pCols = colSpan(player.x), pRows = rowSpan(player.y);
+    for (let i = itemDrops.length - 1; i >= 0; i--) {
+      const d = itemDrops[i];
+
+      if (!d.landed) {
+        d.vy = Math.min(d.vy + DROP_GRAV, DROP_MAX_FALL);
+        let ny = d.y + d.vy;
+        const edgeRow = Math.floor(ny + 1);
+        if (solidAt(d.x, edgeRow)) { ny = edgeRow - 1; d.vy = 0; d.landed = true; }
+        d.y = ny;
+        continue; // don't allow pickup mid-fall -- has to actually land first
+      }
+
+      if (now - d.bornAt < DROP_PICKUP_DELAY_MS) continue;
+      if (!pCols.includes(d.x) || !pRows.includes(Math.round(d.y))) continue;
+      const added = addItemsToInventory(d.type, d.count);
+      d.count -= added;
+      if (d.count <= 0) itemDrops.splice(i, 1);
+    }
+  }
+
+  function drawItemDrops(camX, camY) {
+    const bobUp = Math.floor(performance.now() / 500) % 2 === 0;
+    for (const d of itemDrops) {
+      const rx = d.x - camX;
+      const ry = Math.round(d.y) - camY;
+      if (rx < 0 || rx >= COLS || ry < 0 || ry >= ROWS) continue;
+      const bobOffset = d.landed && bobUp ? 0 : d.landed ? 1 : 0; // only bob once it's actually landed
+      ctx.fillStyle = averageColorFor(d.type);
+      ctx.fillRect(rx * BLOCK, Math.round((d.y - camY) * BLOCK) + bobOffset, 1, 1);
+    }
+  }
+
+  // moves a stack back into the inventory, dropping whatever doesn't fit at
+  // (dropX, dropY) instead of losing it
+  function returnItemsToInventory(stack, dropX, dropY) {
+    if (!stack) return;
+    const added = addItemsToInventory(stack.type, stack.count);
+    const remaining = stack.count - added;
+    if (remaining > 0) spawnItemDrop(stack.type, remaining, dropX, dropY);
+  }
+
+  // empties every slot in a crafting input grid back into the inventory (or
+  // onto the ground if there's no room), used when that grid's menu is closed
+  function clearCraftSlotsToInventory(slotsArr, dropX, dropY) {
+    for (let i = 0; i < slotsArr.length; i++) {
+      if (slotsArr[i]) {
+        returnItemsToInventory(slotsArr[i], dropX, dropY);
+        slotsArr[i] = null;
+      }
+    }
+  }
+
+  function drawHotbar() {
+    if (!uiSheetReady || !sheetReady || !itemSheetReady) return;
+    const uiTile = (srcX, dx, dy) => ctx.drawImage(uiSheet, srcX, 0, BLOCK, BLOCK, dx, dy, BLOCK, BLOCK);
+    const blockTile = (type, dx, dy) => { const isItem = ITEMS.has(type); if (isItem) uiTile(UI_EMPTY_X, dx, dy); const [sx, sy] = isItem ? ITEM_SHEET_POS[type] : SHEET_POS[type]; ctx.drawImage(isItem ? itemSheet : sheet, sx, sy, BLOCK, BLOCK, dx, dy, BLOCK, BLOCK); };
+    const blink = Math.floor(performance.now() / 400) % 2 === 0;
+    const dy = VIEW - BLOCK; // full-resolution slots occupy the bottom block row
+    for (let i = 0; i < 8; i++) {
+      const dx = i * BLOCK;
+      const s = hotbarSlots[i];
+      if (i === selectedIndex && blink) {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(dx, dy, BLOCK, BLOCK);
+      } else if (s) {
+        blockTile(s.type, dx, dy);
+      } else {
+        uiTile(UI_EMPTY_X, dx, dy);
+      }
     }
   }
 
@@ -786,7 +2601,7 @@
   let invOpen = false;
   let invSelection = null; // { group: 'hotbar' | 'inv', index }
 
-  function openInventory() { invOpen = true; invSelection = null; splitArmed = false; }
+  function openInventory() { invOpen = true; invSelection = null; splitArmed = false; resetBreaking(); }
   function closeInventory() { invOpen = false; invSelection = null; splitArmed = false; }
   function toggleInventory() { invOpen ? closeInventory() : openInventory(); }
 
@@ -796,25 +2611,45 @@
     if (k === 'e' || k === 'i') { toggleInventory(); e.preventDefault(); }
     else if (k === 'escape' && invOpen) { closeInventory(); }
     else if (k === 'escape' && craftOpen) { closeCraftingUI(); }
+    else if (k === 'escape' && tableCraftOpen) { closeTableCraftingUI(); }
   });
 
   // ---- crafting screen: opened from a button on the main inventory screen,
   // just left of the exit button. Same hotbar/backpack slots carry over, plus
   // a 2x2 grid of crafting-input slots and a (currently inert) output slot ----
   let craftOpen = false;
-  function openCraftingUI() { craftOpen = true; invOpen = false; } // keep any current selection so it can be dropped into a craft slot
-  function closeCraftingUI() { craftOpen = false; invSelection = null; splitArmed = false; }
+  function openCraftingUI() { craftOpen = true; invOpen = false; resetBreaking(); } // keep any current selection so it can be dropped into a craft slot
+  function closeCraftingUI() {
+    clearCraftSlotsToInventory(craftSlots, player.x, player.y);
+    if (craftOutputVirtual[0]) { returnItemsToInventory(craftOutputVirtual[0], player.x, player.y); craftOutputVirtual[0] = null; }
+    craftOpen = false; invSelection = null; splitArmed = false;
+  }
+
+  // ---- table crafting screen: opened by interacting with a placed
+  // CRAFTING_TABLE block out in the world. Same idea as the small bench
+  // above but with a 3x3 input grid instead of 2x2 ----
+  let tableCraftOpen = false;
+  function openTableCraftingUI() { tableCraftOpen = true; invOpen = false; craftOpen = false; resetBreaking(); }
+  function closeTableCraftingUI() {
+    clearCraftSlotsToInventory(tableCraftSlots, player.x, player.y);
+    if (tableOutputVirtual[0]) { returnItemsToInventory(tableOutputVirtual[0], player.x, player.y); tableOutputVirtual[0] = null; }
+    tableCraftOpen = false; invSelection = null; splitArmed = false;
+  }
 
   function getSlot(group, index) {
     if (group === 'hotbar') return hotbarSlots[index];
     if (group === 'craft') return craftSlots[index];
     if (group === 'output') return craftOutputVirtual[0];
+    if (group === 'tableCraft') return tableCraftSlots[index];
+    if (group === 'tableOutput') return tableOutputVirtual[0];
     return inventorySlots[index];
   }
   function setSlot(group, index, val) {
     if (group === 'hotbar') hotbarSlots[index] = val;
     else if (group === 'craft') craftSlots[index] = val;
     else if (group === 'output') craftOutputVirtual[0] = val;
+    else if (group === 'tableCraft') tableCraftSlots[index] = val;
+    else if (group === 'tableOutput') tableOutputVirtual[0] = val;
     else inventorySlots[index] = val;
   }
 
@@ -837,18 +2672,19 @@
 
   // splits a held stack in half between its source slot and a destination
   // slot: floor(count/2) moves to the destination (added onto a same-type
-  // stack there if present, capped at STACK_MAX), the rest stays behind
+  // stack there if present, capped at that item's stack max), the rest stays behind
   function splitStack(from, to) {
     const heldVal = getSlot(from.group, from.index);
     if (!heldVal || heldVal.count < 2) { invSelection = null; return; } // nothing meaningful to split
     const destVal = getSlot(to.group, to.index);
     if (destVal && destVal.type !== heldVal.type) { invSelection = null; return; } // incompatible stacks
 
+    const max = stackMaxFor(heldVal.type);
     const half = Math.floor(heldVal.count / 2);
     const remain = heldVal.count - half;
     let destCount = (destVal ? destVal.count : 0) + half;
     let overflow = 0;
-    if (destCount > STACK_MAX) { overflow = destCount - STACK_MAX; destCount = STACK_MAX; }
+    if (destCount > max) { overflow = destCount - max; destCount = max; }
     const srcCount = remain + overflow;
 
     setSlot(to.group, to.index, destCount > 0 ? { type: heldVal.type, count: destCount } : null);
@@ -898,10 +2734,10 @@
     const destVal = getSlot(group, index);
 
     // same block type in both slots: combine into the destination stack,
-    // leaving any overflow (beyond STACK_MAX) behind in the source slot
+    // leaving any overflow (beyond that item's stack max) behind in the source slot
     if (heldVal && destVal && heldVal.type === destVal.type) {
       const total = heldVal.count + destVal.count;
-      const merged = Math.min(total, STACK_MAX);
+      const merged = Math.min(total, stackMaxFor(heldVal.type));
       const leftover = total - merged;
       setSlot(group, index, { type: heldVal.type, count: merged });
       setSlot(from.group, from.index, leftover > 0 ? { type: heldVal.type, count: leftover } : null);
@@ -989,10 +2825,28 @@
   // from each input slot when the output is actually picked up. Ingredients
   // are only ever consumed at that moment (when the output slot is "taken
   // from"), never just for previewing what it would produce.
-  function getCraftRecipeOutput() {
-    // a wood plank in each of the 4 input slots -> crafting table
-    const allPlanks = craftSlots.every(s => s && s.type === WOOD_PLANKS && s.count >= 1);
+
+  // shape-matching shared by both the 2x2 bench and (within any 2x2 window
+  // of) the 3x3 table: slots4 is [top-left, top-right, bottom-left, bottom-right]
+  function matchShapedRecipe(slots4) {
+    // a wood plank in each of the 4 slots -> crafting table
+    const allPlanks = slots4.every(s => s && s.type === WOOD_PLANKS && s.count >= 1);
     if (allPlanks) return { type: CRAFTING_TABLE, count: 1, consume: [1, 1, 1, 1] };
+
+    // wood planks stacked in the left column (top-left + bottom-left),
+    // right column empty -> 4 sticks
+    const isStickPattern =
+      slots4[0] && slots4[0].type === WOOD_PLANKS &&
+      slots4[2] && slots4[2].type === WOOD_PLANKS &&
+      !slots4[1] && !slots4[3];
+    if (isStickPattern) return { type: STICK, count: 4, consume: [1, 0, 1, 0] };
+
+    return null;
+  }
+
+  function getCraftRecipeOutput() {
+    const shaped = matchShapedRecipe(craftSlots);
+    if (shaped) return shaped;
 
     // a log anywhere in the input grid -> 4 wood planks; only the 1 log that
     // matched is consumed, whatever else is sitting in the other slots is left alone
@@ -1002,6 +2856,80 @@
         const consume = [0, 0, 0, 0];
         consume[i] = 1;
         return { type: WOOD_PLANKS, count: 4, consume };
+      }
+    }
+    return null;
+  }
+
+  // table version (3x3 grid): the unshaped log->planks recipe works the same
+  // no matter where the log sits; the shaped 2x2 recipes (sticks, crafting
+  // table) still work too, placed anywhere within the 3x3 grid, as long as
+  // the rest of the grid outside that 2x2 window is empty -- same as how a
+  // real crafting table lets you shift a small recipe's shape around in the
+  // bigger grid
+  // full-3x3-only shaped recipes for the stone tools: unlike the 2x2 recipes
+  // above, these need the real 3x3 table grid and aren't shiftable within it,
+  // since they use the whole grid (or all 3 columns). Pattern strings are
+  // read row-major, top-left to bottom-right: 'C' = cobblestone, 'S' = stick,
+  // '.' = must be empty.
+  function matchesPattern9(slots9, pattern) {
+    for (let i = 0; i < 9; i++) {
+      const cell = pattern[i];
+      const s = slots9[i];
+      if (cell === '.') { if (s) return false; }
+      else if (cell === 'C') { if (!s || s.type !== COBBLESTONE || s.count < 1) return false; }
+      else if (cell === 'S') { if (!s || s.type !== STICK || s.count < 1) return false; }
+    }
+    return true;
+  }
+
+  const STONE_TOOL_PATTERNS = [
+    // stone pickaxe: a row of 3 cobblestone on top, stick handle down the middle
+    { pattern: ['C','C','C', '.','S','.', '.','S','.'], type: STONE_PICKAXE },
+    // stone sword: 2 cobblestone stacked, stick handle below
+    { pattern: ['.','C','.', '.','C','.', '.','S','.'], type: STONE_SWORD },
+    // stone axe: an L of cobblestone with the stick handle down the middle,
+    // accepted either left- or right-handed
+    { pattern: ['C','C','.', 'C','S','.', '.','S','.'], type: STONE_AXE },
+    { pattern: ['.','C','C', '.','S','C', '.','S','.'], type: STONE_AXE },
+  ];
+
+  function matchStoneToolRecipe(slots9) {
+    for (const { pattern, type } of STONE_TOOL_PATTERNS) {
+      if (matchesPattern9(slots9, pattern)) {
+        const consume = pattern.map(cell => (cell === '.' ? 0 : 1));
+        return { type, count: 1, consume };
+      }
+    }
+    return null;
+  }
+
+  function getTableCraftRecipeOutput() {
+    const stoneTool = matchStoneToolRecipe(tableCraftSlots);
+    if (stoneTool) return stoneTool;
+
+    for (let i = 0; i < tableCraftSlots.length; i++) {
+      const s = tableCraftSlots[i];
+      if (s && s.type === WOOD) {
+        const consume = new Array(tableCraftSlots.length).fill(0);
+        consume[i] = 1;
+        return { type: WOOD_PLANKS, count: 4, consume };
+      }
+    }
+
+    for (let r0 = 0; r0 <= 1; r0++) {
+      for (let c0 = 0; c0 <= 1; c0++) {
+        const idxTL = r0 * 3 + c0, idxTR = r0 * 3 + c0 + 1,
+              idxBL = (r0 + 1) * 3 + c0, idxBR = (r0 + 1) * 3 + c0 + 1;
+        const windowIdx = [idxTL, idxTR, idxBL, idxBR];
+        const restEmpty = tableCraftSlots.every((s, i) => windowIdx.includes(i) || !s);
+        if (!restEmpty) continue;
+        const match = matchShapedRecipe(windowIdx.map(i => tableCraftSlots[i]));
+        if (match) {
+          const consume = new Array(tableCraftSlots.length).fill(0);
+          windowIdx.forEach((i, k) => { consume[i] = match.consume[k]; });
+          return { type: match.type, count: match.count, consume };
+        }
       }
     }
     return null;
@@ -1028,6 +2956,25 @@
     handleSlotClick('output', 0);
   }
 
+  // same idea, for the 3x3 table crafting screen
+  function handleTableOutputSlotClick() {
+    if (invSelection !== null) return;
+    if (tableOutputVirtual[0] === null) {
+      const recipe = getTableCraftRecipeOutput();
+      if (!recipe) return;
+      for (let i = 0; i < tableCraftSlots.length; i++) {
+        const amt = recipe.consume[i];
+        if (amt > 0) {
+          const s = tableCraftSlots[i];
+          s.count -= amt;
+          tableCraftSlots[i] = s.count > 0 ? s : null;
+        }
+      }
+      tableOutputVirtual[0] = { type: recipe.type, count: recipe.count };
+    }
+    handleSlotClick('tableOutput', 0);
+  }
+
   // ---- crafting screen (mapping: grey = bg, red = exit, green = 2x2 grid of
   // 2x2 crafting-input slots, pink = 2x2 output slot, blue = backpack slots,
   // yellow = hotbar slots) ----
@@ -1052,6 +2999,36 @@
     if (hit.region === 'exit') { closeCraftingUI(); return; }
     if (hit.region === 'craft') { handleSlotClick('craft', hit.index); return; }
     if (hit.region === 'output') { handleOutputSlotClick(); return; }
+    if (hit.region === 'inv') { handleSlotClick('inv', hit.index); return; }
+    if (hit.region === 'hotbar') { handleSlotClick('hotbar', hit.index); return; }
+    // qty / bg: not interactive
+  }
+
+  // ---- table crafting screen (3x3 input grid, opened from a placed
+  // CRAFTING_TABLE block). Layout: exit top-right; 3x3 grid top-left (6x6px);
+  // output slot + qty readout to the right of the grid; backpack below;
+  // hotbar at the bottom, same as the small bench screen ----
+  function hitTestTableCraftingUI(px, py) {
+    if (px >= 14 && px <= 15 && py >= 0 && py <= 1) return { region: 'exit' };
+    if (px >= 1 && px <= 6 && py >= 0 && py <= 5) {
+      const col = Math.floor((px - 1) / 2), row = Math.floor(py / 2);
+      return { region: 'tableCraft', index: row * 3 + col };
+    }
+    if (px >= 9 && px <= 10 && py >= 2 && py <= 3) return { region: 'tableOutput' };
+    if (px >= 12 && px <= 15 && py >= 2 && py <= 5) return { region: 'qty' };
+    if (py >= 6 && py <= 13) {
+      const col = Math.floor(px / 2), row = Math.floor((py - 6) / 2);
+      return { region: 'inv', index: row * INV_COLS + col };
+    }
+    if (py >= 14 && py <= 15) return { region: 'hotbar', index: Math.floor(px / 2) };
+    return { region: 'bg' };
+  }
+
+  function handleTableCraftingUIClick(px, py) {
+    const hit = hitTestTableCraftingUI(px, py);
+    if (hit.region === 'exit') { closeTableCraftingUI(); return; }
+    if (hit.region === 'tableCraft') { handleSlotClick('tableCraft', hit.index); return; }
+    if (hit.region === 'tableOutput') { handleTableOutputSlotClick(); return; }
     if (hit.region === 'inv') { handleSlotClick('inv', hit.index); return; }
     if (hit.region === 'hotbar') { handleSlotClick('hotbar', hit.index); return; }
     // qty / bg: not interactive
@@ -1148,15 +3125,103 @@
     }
   }
 
+  function drawTableCraftingUI() {
+    if (!uiSheetReady || !sheetReady || !itemSheetReady) return;
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, VIEW, VIEW);
+
+    const uiTile = (srcX, dx, dy) => ctx.drawImage(uiSheet, srcX, 0, BLOCK, BLOCK, dx, dy, BLOCK, BLOCK);
+    const blockTile = (type, dx, dy) => { const isItem = ITEMS.has(type); if (isItem) uiTile(UI_EMPTY_X, dx, dy); const [sx, sy] = isItem ? ITEM_SHEET_POS[type] : SHEET_POS[type]; ctx.drawImage(isItem ? itemSheet : sheet, sx, sy, BLOCK, BLOCK, dx, dy, BLOCK, BLOCK); };
+    const blink = Math.floor(performance.now() / 400) % 2 === 0;
+
+    // background fill across the whole screen; special regions draw over top of it
+    for (let row = 0; row < 8; row++) {
+      for (let col = 0; col < 8; col++) uiTile(UI_BG_X, col * 2, row * 2);
+    }
+
+    // crafting input grid: 3x3 slots, each 2x2px
+    for (let row = 0; row < 3; row++) {
+      for (let col = 0; col < 3; col++) {
+        const idx = row * 3 + col;
+        const dx = 1 + col * 2, dy = row * 2;
+        const stack = tableCraftSlots[idx];
+        const isSel = invSelection && invSelection.group === 'tableCraft' && invSelection.index === idx;
+        if (isSel && blink) { ctx.fillStyle = '#ffffff'; ctx.fillRect(dx, dy, 2, 2); }
+        else if (stack) blockTile(stack.type, dx, dy);
+        else uiTile(UI_EMPTY_X, dx, dy);
+      }
+    }
+
+    // output slot -- same behavior as the small bench: shows the held crafted
+    // stack if one's been taken, otherwise a preview of what the current
+    // input grid would produce
+    const recipePreview = tableOutputVirtual[0] === null ? getTableCraftRecipeOutput() : null;
+    {
+      const dx = 9, dy = 2;
+      const isSel = invSelection && invSelection.group === 'tableOutput' && invSelection.index === 0;
+      if (isSel && blink) { ctx.fillStyle = '#ffffff'; ctx.fillRect(dx, dy, 2, 2); }
+      else if (tableOutputVirtual[0]) blockTile(tableOutputVirtual[0].type, dx, dy);
+      else if (recipePreview) blockTile(recipePreview.type, dx, dy);
+      else uiTile(UI_EMPTY_X, dx, dy);
+    }
+
+    // exit button
+    uiTile(UI_EXIT_X, 14, 0);
+
+    // quantity readout, same 4x4 dot grid as the small bench screen
+    let dotsQty = 0, showDots = false;
+    if (invSelection) {
+      const held = getSlot(invSelection.group, invSelection.index);
+      dotsQty = held ? Math.min(held.count, STACK_MAX) : 0;
+      showDots = true;
+    } else if (recipePreview) {
+      dotsQty = recipePreview.count;
+      showDots = true;
+    }
+    if (showDots) {
+      for (let i = 0; i < 16; i++) {
+        const cx = 12 + (i % 4), cy = 2 + Math.floor(i / 4);
+        ctx.fillStyle = i < dotsQty ? '#ffffff' : UI_BG_COLOR;
+        ctx.fillRect(cx, cy, 1, 1);
+      }
+    } else {
+      ctx.fillStyle = UI_BG_COLOR;
+      ctx.fillRect(12, 2, 4, 4);
+    }
+
+    // backpack grid, same layout as the small bench / main inventory screens
+    for (let row = 0; row < INV_ROWS; row++) {
+      for (let col = 0; col < INV_COLS; col++) {
+        const idx = row * INV_COLS + col;
+        const dx = col * 2, dy = 6 + row * 2;
+        const stack = inventorySlots[idx];
+        const isSel = invSelection && invSelection.group === 'inv' && invSelection.index === idx;
+        if (isSel && blink) { ctx.fillStyle = '#ffffff'; ctx.fillRect(dx, dy, 2, 2); }
+        else if (stack) blockTile(stack.type, dx, dy);
+        else uiTile(UI_EMPTY_X, dx, dy);
+      }
+    }
+
+    // hotbar row
+    for (let col = 0; col < 8; col++) {
+      const dx = col * 2, dy = 14;
+      const stack = hotbarSlots[col];
+      const isSel = invSelection && invSelection.group === 'hotbar' && invSelection.index === col;
+      if (isSel && blink) { ctx.fillStyle = '#ffffff'; ctx.fillRect(dx, dy, 2, 2); }
+      else if (stack) blockTile(stack.type, dx, dy);
+      else uiTile(UI_EMPTY_X, dx, dy);
+    }
+  }
+
   // ---- mining / placing: triggered by Backspace / Enter, targeting whatever
   // block is under the cursor ----
   function cursorWorldPos() {
     const bx = Math.floor(cursor.x / BLOCK);
     const by = Math.floor(cursor.y / BLOCK);
-    const camX = Math.max(0, Math.min(WORLD_W - COLS, Math.round(player.x - COLS / 2)));
+    const camX = Math.round(player.x - COLS / 2);
     const camY = Math.max(0, Math.min(WORLD_H - ROWS, Math.round(player.y - ROWS / 2)));
     const worldX = camX + bx, worldY = camY + by;
-    if (worldX < 0 || worldX >= WORLD_W || worldY < 0 || worldY >= WORLD_H) return null;
+    if (worldY < 0 || worldY >= WORLD_H) return null;
     return { worldX, worldY };
   }
 
@@ -1165,41 +3230,144 @@
     if (!pos) return;
     const { worldX, worldY } = pos;
     const held = hotbarSlots[selectedIndex];
+    if (!held) return;
+    const targetT = blockAtLayer(activeLayer, worldX, worldY);
+
+    // stick in hand + a flammable block: spam-tapping interact on it lights
+    // it on fire (see igniteWithStick for the "spam" counting)
+    if (held.type === STICK && FLAMMABLE.has(targetT)) {
+      igniteWithStick(activeLayer, worldX, worldY);
+      return;
+    }
+
+    // empty bucket + water/lava: scoop it up. Turns the bucket in hand into
+    // the filled kind and empties that tile back to sky, rather than placing
+    if (held.type === BUCKET_EMPTY) {
+      const meta = FLUID_META[targetT];
+      const isWater = targetT === WATER || (meta && meta.fluid === 'water');
+      const isLava = targetT === LAVA || (meta && meta.fluid === 'lava');
+      if (isWater || isLava) {
+        setBlockAtLayer(activeLayer, worldX, worldY, SKY);
+        held.type = isWater ? BUCKET_WATER : BUCKET_LAVA;
+        return;
+      }
+    }
+
     const playerRows = rowSpan(player.y);
     const playerCols = colSpan(player.x);
     const insidePlayer = playerCols.includes(worldX) && playerRows.includes(worldY);
     // can place into empty air, or into a water/lava tile, replacing the fluid
-    const targetT = layers[activeLayer][worldY][worldX];
     const canPlace = targetT === SKY || FLUIDS.has(targetT);
-    if (held && canPlace && !insidePlayer && !ITEMS.has(held.type)) {
-      layers[activeLayer][worldY][worldX] = held.type;
+    if (!canPlace || insidePlayer) return;
+
+    // a filled bucket pours out its liquid as a fresh source block, then
+    // becomes an empty bucket again -- it never gets consumed or dropped
+    if (held.type === BUCKET_WATER || held.type === BUCKET_LAVA) {
+      setBlockAtLayer(activeLayer, worldX, worldY, held.type === BUCKET_WATER ? WATER : LAVA);
+      held.type = BUCKET_EMPTY;
+      return;
+    }
+
+    if (!ITEMS.has(held.type)) {
+      setBlockAtLayer(activeLayer, worldX, worldY, held.type);
       held.count--;
       if (held.count <= 0) hotbarSlots[selectedIndex] = null;
     }
   }
 
-  function breakAtCursor() {
+  // how long each block type takes to break (ms) while holding Backspace/BREAK,
+  // with bare hands (no tool, or the "wrong" tool for that block)
+  const BREAK_TIME_MS = {
+    [LEAF]: 1000, [GRASS]: 1500, [DIRT]: 1500, [SAND]: 1500, [CLAY]: 1750,
+    [WOOD_PLANKS]: 2250, [WOOD]: 2500, [CRAFTING_TABLE]: 2500, [BRICK]: 3000,
+    [COBBLESTONE]: 3750, [STONE]: 4000, [COAL_ORE]: 4000, [IRON_ORE]: 4500,
+    [COPPER_ORE]: 4500, [FURNACE]: 4500,
+  };
+  function breakTimeFor(type) { return BREAK_TIME_MS[type] ?? 2500; }
+
+  // axes: mine wood-family blocks faster, by tier
+  const AXE_BLOCKS = new Set([WOOD, WOOD_PLANKS, CRAFTING_TABLE]);
+  const AXE_MULT = { [STONE_AXE]: 0.5, [COPPER_AXE]: 0.35, [IRON_AXE]: 0.22 };
+
+  // pickaxes: mine stone-family blocks faster, by tier
+  const PICKAXE_BLOCKS = new Set([STONE, COBBLESTONE, COAL_ORE, IRON_ORE, COPPER_ORE, FURNACE, BRICK]);
+  const PICKAXE_MULT = { [STONE_PICKAXE]: 0.5, [COPPER_PICKAXE]: 0.35, [IRON_PICKAXE]: 0.22 };
+
+  // how long it actually takes to break block type `t` given the currently held item
+  function breakTimeForHeld(type, heldType) {
+    const base = breakTimeFor(type);
+    if (heldType != null) {
+      if (AXE_BLOCKS.has(type) && AXE_MULT[heldType] != null) return base * AXE_MULT[heldType];
+      if (PICKAXE_BLOCKS.has(type) && PICKAXE_MULT[heldType] != null) return base * PICKAXE_MULT[heldType];
+    }
+    return base;
+  }
+
+  // progress of whatever block is currently being held-broken, if any
+  const breaking = { key: null, layerIdx: 0, x: 0, y: 0, progress: 0 };
+  function resetBreaking() { breaking.key = null; breaking.progress = 0; }
+
+  // called every frame while out in the world (not in a UI screen): advances
+  // the break-in-progress for whatever's under the cursor while Backspace is
+  // held, and actually breaks the block once its time is up
+  function updateBreaking(dt) {
+    if (!keys['backspace']) { resetBreaking(); return; }
     const pos = cursorWorldPos();
-    if (!pos) return;
+    if (!pos) { resetBreaking(); return; }
     const { worldX, worldY } = pos;
-    const t = layers[activeLayer][worldY][worldX];
-    if (t !== SKY && !FLUIDS.has(t)) {
-      pickupBlock(t);
-      layers[activeLayer][worldY][worldX] = SKY;
+    const t = blockAtLayer(activeLayer, worldX, worldY);
+    if (t === SKY || FLUIDS.has(t)) { resetBreaking(); return; }
+
+    const key = `${activeLayer},${worldX},${worldY}`;
+    if (breaking.key !== key) {
+      breaking.key = key;
+      breaking.layerIdx = activeLayer;
+      breaking.x = worldX;
+      breaking.y = worldY;
+      breaking.progress = 0;
+    }
+    breaking.progress += dt;
+    const heldNow = hotbarSlots[selectedIndex];
+    if (breaking.progress >= breakTimeForHeld(t, heldNow ? heldNow.type : null)) {
+      setBlockAtLayer(activeLayer, worldX, worldY, SKY);
+      if (!pickupBlock(t)) spawnItemDrop(t, 1, worldX, worldY);
+      resetBreaking();
     }
   }
 
+  // draws the crack overlay (4 frames) on the block currently being broken,
+  // scaled to how far along its break progress is
+  function drawBreakOverlay(camX, camY) {
+    if (!breaking.key || breaking.layerIdx !== activeLayer) return;
+    const rx = breaking.x - camX, ry = breaking.y - camY;
+    if (rx < 0 || rx >= COLS || ry < 0 || ry >= ROWS) return;
+    const t = blockAtLayer(breaking.layerIdx, breaking.x, breaking.y);
+    const heldNow = hotbarSlots[selectedIndex];
+    const frac = Math.min(1, breaking.progress / breakTimeForHeld(t, heldNow ? heldNow.type : null));
+    const frame = Math.min(3, Math.floor(frac * 4));
+    ctx.drawImage(breakSheet, frame * 2, 0, BLOCK, BLOCK, rx * BLOCK, ry * BLOCK, BLOCK, BLOCK);
+  }
+
   // Enter: on the inventory/crafting screens this is the "click" equivalent
-  // for buttons and slots at the cursor; out in the world it places/interacts
+  // for buttons and slots at the cursor; out in the world it places/interacts.
+  // Interacting with a placed crafting table opens its 3x3 crafting UI,
+  // unless a stick is held (spam-tapping a stick still lights it on fire)
   function handleInteract() {
+    if (menuOpen) { if (pointInButton(cursor.x, cursor.y)) menuOpen = false; return; }
     if (invOpen) { handleInventoryClick(cursor.x, cursor.y); return; }
     if (craftOpen) { handleCraftingUIClick(cursor.x, cursor.y); return; }
+    if (tableCraftOpen) { handleTableCraftingUIClick(cursor.x, cursor.y); return; }
+
+    const pos = cursorWorldPos();
+    if (pos) {
+      const targetT = blockAtLayer(activeLayer, pos.worldX, pos.worldY);
+      const held = hotbarSlots[selectedIndex];
+      if (targetT === CRAFTING_TABLE && !(held && held.type === STICK)) {
+        openTableCraftingUI();
+        return;
+      }
+    }
     placeAtCursor();
-  }
-  // Backspace: breaking only makes sense out in the world
-  function handleBreak() {
-    if (invOpen || craftOpen) return;
-    breakAtCursor();
   }
 
   // ---- physics loop ----
@@ -1215,10 +3383,11 @@
     else if (keys['d']) player.vx = MOVE;
     else player.vx *= 0.5;
 
-    // is the player currently submerged in a fluid (water or lava)?
+    // is the player currently submerged in a fluid (water or lava) -- or
+    // swimming up inside a tall wave's crest, which counts too
     const swimRows = rowSpan(player.y);
     const swimCols = colSpan(player.x);
-    const inFluid = swimCols.some(c => swimRows.some(r => fluidAt(c, r)));
+    const inFluid = swimCols.some(c => swimRows.some(r => fluidOrWaveAt(c, r)));
 
     // jump: on solid ground, or a gentle upward stroke while swimming
     const groundCols = colSpan(player.x);
@@ -1245,7 +3414,7 @@
         if (rows.some(r => solidAt(edgeCol, r))) nx = edgeCol + 1;
       }
     }
-    player.x = nx;
+    player.x = wrapX(nx);
 
     // ---- move Y, colliding against the true block edge ----
     let ny = player.y + player.vy;
@@ -1265,10 +3434,15 @@
     }
     player.y = ny;
 
-    if (player.y > WORLD_H + 5) {
-      player.y = heightsArr[0][Math.round(player.x)] - 1;
-      player.hp = Math.max(0, player.hp - 1);
-      document.getElementById('hp').textContent = player.hp;
+    // reaching the core -- since the world already loops horizontally (see
+    // wrapX/WORLD_RADIUS above), digging straight down through the molten
+    // core comes out the antipodal point on the surface instead of just
+    // hitting an invisible floor. Everything else about movement/collision
+    // above is untouched -- this is the one exception at the very bottom.
+    if (player.y > WORLD_H - 2) {
+      player.x = wrapX(player.x + WORLD_RADIUS);
+      player.y = frontHeightAt(Math.round(player.x)) - 1;
+      player.vy = 0;
     }
 
     // ---- snap to the pixel grid after 1s of being idle ----
@@ -1290,34 +3464,68 @@
   // ---- render at true 16x16 resolution ----
   // draws one block tile at destination (dx,dy), mirroring horizontally for
   // left-flowing fluid tiles whose art is authored facing right
-  function drawTile(sx, sy, dx, dy, mirrored) {
+  function drawTile(img, sx, sy, dx, dy, mirrored) {
     if (mirrored) {
       ctx.save();
       ctx.translate(dx + BLOCK, dy);
       ctx.scale(-1, 1);
-      ctx.drawImage(sheet, sx, sy, BLOCK, BLOCK, 0, 0, BLOCK, BLOCK);
+      ctx.drawImage(img, sx, sy, BLOCK, BLOCK, 0, 0, BLOCK, BLOCK);
       ctx.restore();
     } else {
-      ctx.drawImage(sheet, sx, sy, BLOCK, BLOCK, dx, dy, BLOCK, BLOCK);
+      ctx.drawImage(img, sx, sy, BLOCK, BLOCK, dx, dy, BLOCK, BLOCK);
     }
   }
 
-  function draw() {
-    if (!sheetReady) return;
-    const camX = Math.max(0, Math.min(WORLD_W - COLS, Math.round(player.x - COLS / 2)));
-    const camY = Math.max(0, Math.min(WORLD_H - ROWS, Math.round(player.y - ROWS / 2)));
+  function draw(cam) {
+    if (!sheetReady || !fluidSheetReady || !fireSheetReady || !breakSheetReady) return;
+    const demo = !!cam;
+    const camX = demo ? cam.x : Math.round(player.x - COLS / 2);
+    const camY = demo ? cam.y : Math.max(0, Math.min(WORLD_H - ROWS, Math.round(player.y - ROWS / 2)));
+    const overcastRefX = demo ? camX + COLS / 2 : player.x;
 
-    ctx.fillStyle = SKY_COLOR;
-    ctx.fillRect(0, 0, VIEW, VIEW);
+    // storm overlay: the sky tints progressively greyer the more overhead
+    // cloud cover the player is under. Computed before the sky/celestials
+    // draw so the sun/moon/stars can fade out under the same cover rather
+    // than just being tinted along with everything else. Smoothed toward
+    // the real value so it never flickers with a single weather tick.
+    skyOvercast += (cloudCoverAt(Math.round(overcastRefX)) - skyOvercast) * 0.05;
+    stormOvercast += (stormCoverAt(Math.round(overcastRefX)) - stormOvercast) * 0.05;
+    const cloudiness = Math.max(skyOvercast, stormOvercast * 1.2);
+    const celestialVisibility = Math.max(0, 1 - cloudiness * 1.6);
+
+    drawSkyAndCelestials(overcastRefX, demo ? demoTimeFrac : null, celestialVisibility, demo ? demoMoonPhase : null);
+
+    // the grey rain/storm tint only makes sense once you're actually
+    // underneath the cloud deck looking up through it -- someone standing
+    // above the clouds (a tall mountain peak) shouldn't have the sky wash
+    // out grey, so require the camera to be at least 10 blocks below the
+    // bottom edge of the cloud band (CLOUD_MAX_Y) before it's allowed to show
+    const overcastRefY = demo ? cam.y + ROWS / 2 : player.y;
+    const belowClouds = overcastRefY >= CLOUD_MAX_Y + 10;
+
+    if (belowClouds && skyOvercast > 0.01) {
+      ctx.fillStyle = `rgba(90,92,98,${(skyOvercast * 0.65).toFixed(3)})`;
+      ctx.fillRect(0, 0, VIEW, VIEW);
+    }
+
+    // extra dark tint specifically under an active storm's footprint (not
+    // just any old cumulus overhead) -- stacks on top of the tint above so
+    // the sky visibly blows out much greyer once a real storm is overhead
+    if (belowClouds && stormOvercast > 0.01) {
+      ctx.fillStyle = `rgba(55,58,64,${(stormOvercast * 0.8).toFixed(3)})`;
+      ctx.fillRect(0, 0, VIEW, VIEW);
+    }
 
     // background layer first, darkened, visible only through gaps in the front layer
     for (let ry = 0; ry < ROWS; ry++) {
       for (let rx = 0; rx < COLS; rx++) {
         const t = blockAtLayer(1, camX + rx, camY + ry);
         if (t !== SKY) {
-          const [sx, sy] = SHEET_POS[t];
+          const isFlow = FLOW_TILES.has(t);
+          const [sx, sy] = isFlow ? FLUID_SHEET_POS[t] : SHEET_POS[t];
           const dx = rx * BLOCK, dy = ry * BLOCK;
-          drawTile(sx, sy, dx, dy, MIRRORED_TILES.has(t));
+          drawTile(isFlow ? fluidSheet : sheet, sx, sy, dx, dy, MIRRORED_TILES.has(t));
+          if (burning.has(`1,${camX + rx},${camY + ry}`)) drawFireOverlay(dx, dy);
           ctx.fillStyle = 'rgba(0,0,0,0.5)';
           ctx.fillRect(dx, dy, BLOCK, BLOCK);
         }
@@ -1329,45 +3537,367 @@
       for (let rx = 0; rx < COLS; rx++) {
         const t = blockAtLayer(0, camX + rx, camY + ry);
         if (t !== SKY) {
-          const [sx, sy] = SHEET_POS[t];
-          drawTile(sx, sy, rx * BLOCK, ry * BLOCK, MIRRORED_TILES.has(t));
+          const isFlow = FLOW_TILES.has(t);
+          const [sx, sy] = isFlow ? FLUID_SHEET_POS[t] : SHEET_POS[t];
+          const dx = rx * BLOCK, dy = ry * BLOCK;
+          drawTile(isFlow ? fluidSheet : sheet, sx, sy, dx, dy, MIRRORED_TILES.has(t));
+          if (burning.has(`0,${camX + rx},${camY + ry}`)) drawFireOverlay(dx, dy);
         }
       }
     }
 
-    // player: 1 block, bright pixel so it reads against terrain
-    const psx = Math.round((player.x - camX) * BLOCK);
-    const psy = Math.round((player.y - camY) * BLOCK);
-    ctx.fillStyle = '#ffe75e';
-    ctx.fillRect(psx, psy, BLOCK, BLOCK);
+    // waves: animated ripples rising above every open water surface,
+    // drawn right after terrain so they sit above the water tile but still
+    // under the player/clouds/rain
+    drawWaterSurfaceWaves(camX, camY);
 
-    drawHotbar();
+    // clouds: drawn in front of the front world layer so they read as
+    // floating above the terrain, rather than behind it
+    drawWeatherParticles(camX, camY);
+
+    // player: 1 block, bright pixel so it reads against terrain (skipped
+    // during the opening-screen background demo, which has no player)
+    if (!demo) {
+      const psx = Math.round((player.x - camX) * BLOCK);
+      const psy = Math.round((player.y - camY) * BLOCK);
+      ctx.fillStyle = '#ffe75e';
+      ctx.fillRect(psx, psy, BLOCK, BLOCK);
+    }
+
+    if (!demo) {
+      drawRain(camX, camY);
+      drawLightningBolts(camX, camY);
+      drawBreakOverlay(camX, camY);
+      drawItemDrops(camX, camY);
+      drawHotbar();
+    }
+
+    // lightning flash: a translucent white-blue overlay across the whole
+    // screen, independent of whatever's on screen -- this is what lets a
+    // strike well outside the player's current view still read as a flash
+    // for them, as long as they're within the storm's domain
+    if (screenFlash > 0.001) {
+      ctx.fillStyle = `rgba(235,240,255,${(screenFlash * 0.85).toFixed(3)})`;
+      ctx.fillRect(0, 0, VIEW, VIEW);
+    }
   }
 
   // ---- cursor overlay: always drawn last, on top of whatever screen is showing ----
   function drawCursor() {
+    // 'difference' blending inverts whatever pixel it's drawn over (white
+    // XOR'd against any color = that color's exact opposite), so the cursor
+    // stays visible no matter what's underneath it
+    ctx.save();
+    ctx.globalCompositeOperation = 'difference';
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(cursor.x, cursor.y, 1, 1);
+    ctx.restore();
+  }
+
+  // ---- opening screen ----------------------------------------------------
+  // Built directly from the uploaded 16x16 UI mapping:
+  //   green -> background (live gameplay shows through, unobscured)
+  //   grey  -> UI panel tile
+  //   blue  -> play button slot (covered by the button asset below)
+  let menuOpen = true;
+
+  // 'g' = background (draw nothing, gameplay shows through)
+  // 'p' = panel (grey UI tile)
+  // 'b' = button slot (grey tile behind, button asset drawn on top)
+  const MENU_ROWS = [
+    'gggggggggggggggg',
+    'gggggggggggggggg',
+    'gggggggggggggggg',
+    'gggggggggggggggg',
+    'gggppppppppppggg',
+    'gggpbbbbbbbbpggg',
+    'gggpbbbbbbbbpggg',
+    'gggpbbbbbbbbpggg',
+    'gggppppppppppggg',
+    'gggppppppppppggg',
+    'gggppppppppppggg',
+    'gggppppppppppggg',
+    'gggggggggggggggg',
+    'gggggggggggggggg',
+    'gggggggggggggggg',
+    'gggggggggggggggg',
+  ].map(row => row.split(''));
+  const PANEL_COLOR = '#707070';
+  // button slot bounds, in canvas pixels (matches the mapping above)
+  const BTN_X = 4, BTN_Y = 5, BTN_W = 8, BTN_H = 3;
+
+  // the play-button asset (8x3px), transcribed from the uploaded asset PNG.
+  // pure black pixels are transparent -- the grey panel tile shows through.
+  const BTN_PIXELS = [
+    [[121,241,230],[109,241,230],[9,125,23], null,           null,           null,           [72,72,72],[78,78,78]],
+    [[91,241,224], [106,241,229],[9,130,23], null,           [83,59,28],     [75,55,25],     [78,78,78],[70,70,70]],
+    [[94,241,225], null,          [9,125,23],[9,130,23],     [74,54,25],     [83,59,28],     null,      [78,78,78]],
+  ];
+
+  function drawMenu() {
+    for (let ry = 0; ry < VIEW; ry++) {
+      for (let rx = 0; rx < VIEW; rx++) {
+        const cell = MENU_ROWS[ry][rx];
+        if (cell === 'g') continue; // let the gameplay background show through
+        ctx.fillStyle = PANEL_COLOR;
+        ctx.fillRect(rx, ry, 1, 1);
+      }
+    }
+    for (let py = 0; py < BTN_H; py++) {
+      for (let px = 0; px < BTN_W; px++) {
+        const rgb = BTN_PIXELS[py][px];
+        if (!rgb) continue; // transparent -- panel tile stays visible
+        ctx.fillStyle = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+        ctx.fillRect(BTN_X + px, BTN_Y + py, 1, 1);
+      }
+    }
+  }
+
+  // ---- opening-screen background demo -------------------------------------
+  // HOW THESE SHOTS WERE PUT TOGETHER
+  //
+  // The world used to be an infinite plane, and this demo leaned on that:
+  // panning to a wildly distant x gave wildly different-looking scenery even
+  // though it was the same noise-based generator. Now the world is a bounded
+  // loop WORLD_PERIOD blocks around (see wrapX), so there's no such thing as
+  // "far away" anymore -- every x eventually wraps into the same one strip of
+  // terrain. That's fine: the goal was always variety, not literal distance,
+  // and a world WORLD_PERIOD blocks around still has plenty of it (mountains,
+  // oceans, plains) spread across its circumference. DEMO_ANCHORS below is
+  // just seven points spaced out evenly around that loop (fractions of
+  // WORLD_RADIUS), rather than seven arbitrarily huge numbers -- wrapX would
+  // fold huge numbers back down anyway, so there was no reason to keep them.
+  //
+  // A single "shot" is: pick one anchor, pan the camera some fixed number of
+  // blocks (DEMO_PAN_BLOCKS) across it over a fixed duration (DEMO_SHOT_MS),
+  // then cut to the next shot in the rotation. The pan itself moves at a
+  // constant rate for the whole shot (see updateDemoCam) -- no ease in/out --
+  // so it reads as a smooth, steady camera move rather than one that
+  // randomly speeds up or slows down. Alternating the pan direction by shot
+  // index (idx % 2) keeps consecutive shots from all drifting the same way,
+  // and a small per-shot jitter on the start x keeps repeat visits to the
+  // same anchor (once the rotation loops) from panning over the exact same
+  // stretch twice.
+  //
+  // Framing height comes from depthBias: each ground shot samples the real
+  // surface height at its anchor (frontHeightAt) and offsets the camera by a
+  // fixed number of blocks from it, so the same list of anchors can be
+  // reused for different kinds of view -- a small negative bias frames
+  // treetops/ground level, a larger positive bias (9-15) pushes the camera
+  // well below the surface into stone/ore/lava territory for a couple of
+  // dedicated "underground" shots.
+  //
+  // Clouds don't fit this scheme at all: they're only ever simulated within
+  // WEATHER_RADIUS blocks of the real player (see seedCloudList), so an
+  // anchor on the far side of the loop would just show empty sky. Cloud
+  // shots are therefore the one kind that stays anchored near the player's
+  // actual spawn column instead of one of the seven anchors, with the
+  // camera's y locked into the cloud altitude band (CLOUD_MIN_Y/CLOUD_MAX_Y)
+  // rather than following the ground, so it reads as flying through the
+  // weather deck itself.
+  //
+  // DEMO_SHOTS below is just the hand-picked running order that interleaves
+  // a few ground "worlds", a couple of underground dips, and a few cloud
+  // flights, so the background doesn't loop through the same kind of shot
+  // back-to-back.
+  const DEMO_ANCHORS = [0, 285, 571, 857, -857, -571, -286]; // evenly spread around the WORLD_PERIOD loop
+  const DEMO_SHOT_MS = 7000;
+  const DEMO_PAN_BLOCKS = 70;
+
+  // clouds only ever exist within WEATHER_RADIUS blocks of the real player,
+  // so "flying through clouds" shots stay anchored near the player's real
+  // spawn column (at cloud altitude) rather than jumping to a far anchor
+  const CLOUD_SHOT_Y_MIN = CLOUD_MIN_Y - 6, CLOUD_SHOT_Y_MAX = CLOUD_MAX_Y - 6;
+
+  // the rotation of shots: ground/underground passes through a few distinct
+  // "worlds" (anchors), interspersed with cloud flights so the sky gets
+  // shown off too. depthBias frames each ground shot at a different height
+  // relative to the surface: treetop, ground level, or deep underground.
+  // timeFrac pins each shot to a deliberate moment in the day/night cycle
+  // (see localDayFrac) rather than leaving it to chance, so the opening
+  // screen tours through sunrise colors, full bright day, sunset colors,
+  // and finally the moonlit night sky as the rotation plays out.
+  //
+  // moonPhaseOverride pins the moon to a specific phase (see
+  // moonPhaseFrac) instead of whatever the real moon is doing right now --
+  // used for the eclipse shot below, since a real eclipse only happens on
+  // rare new-moon days and the opening screen shouldn't have to wait for
+  // one.
+  //
+  // 'timelapse' shots are the odd one out: the camera doesn't pan at all --
+  // it holds still on one spot, like a player standing in place -- while
+  // timeFracStart runs forward through a full day/night cycle over
+  // durationMs, sped way up from the real 40-minute cycle so the sun (or
+  // moon) visibly arcs across the sky and the horizon runs through its
+  // whole dawn/day/dusk/night color range in one shot.
+  const DEMO_SHOTS = [
+    { kind: 'ground', anchorIdx: 0, depthBias: -6, timeFrac: 0.28 }, // sunrise: purple/orange sky, sun still hidden
+    { kind: 'timelapse', anchorIdx: 1, depthBias: -3, timeFracStart: 0.20, durationMs: 9000 }, // standing still: dawn into full day
+    { kind: 'cloud', timeFrac: 0.45 },                               // daytime clouds, sun-lit
+    { kind: 'ground', anchorIdx: 5, depthBias: -6, timeFrac: 0.50, moonPhaseOverride: 0 }, // total eclipse: full daylight, moon blots out the sun
+    { kind: 'ground', anchorIdx: 2, depthBias: 9, timeFrac: 0.60 },  // underground, afternoon light at the surface
+    { kind: 'ground', anchorIdx: 3, depthBias: -6, timeFrac: 0.72 }, // sunset: warm reds/purples, sun already gone
+    { kind: 'cloud', timeFrac: 0.70 },                               // sunset-lit clouds
+    { kind: 'timelapse', anchorIdx: 4, depthBias: -3, timeFracStart: 0.62, durationMs: 9000 }, // standing still: afternoon into night
+    { kind: 'ground', anchorIdx: 4, depthBias: 15, timeFrac: 0.85 }, // deep underground, full night above
+    { kind: 'ground', anchorIdx: 5, depthBias: -3, timeFrac: 0.92 }, // night: moon and stars out
+    { kind: 'cloud', timeFrac: 0.95 },                               // moonlit night clouds
+    { kind: 'ground', anchorIdx: 6, depthBias: -6, timeFrac: 0.22 }, // pre-dawn: still dark, sunrise close
+  ];
+
+  let demoShotIdx = -1;
+  let demoShotStart = 0, demoShotEnd = 0, demoShotElapsed = 0;
+  let demoShotYFixed = null; // non-null only for cloud shots (constant altitude)
+  let demoShotDurationMs = DEMO_SHOT_MS; // per-shot override (timelapse shots run longer)
+  let demoTimeFrac = 0.5; // the current local day/night fraction being shown
+  let demoTimelapse = false; // true while the current shot is sweeping through time
+  let demoTimeFracStart = 0.5; // timelapse shots' starting point in the cycle
+  let demoMoonPhase = null; // non-null pins the moon to a specific phase (see moonPhaseOverride)
+
+  function pickDemoShot(idx) {
+    const shot = DEMO_SHOTS[idx % DEMO_SHOTS.length];
+    demoShotDurationMs = shot.durationMs || DEMO_SHOT_MS;
+    demoTimelapse = shot.kind === 'timelapse';
+    demoMoonPhase = shot.moonPhaseOverride != null ? shot.moonPhaseOverride : null;
+    if (demoTimelapse) {
+      demoTimeFracStart = shot.timeFracStart;
+    } else {
+      demoTimeFrac = shot.timeFrac;
+    }
+    const dir = (idx % 2 === 0) ? 1 : -1;
+    if (shot.kind === 'cloud') {
+      const jitter = (idx * 613) % 41; // small spread so repeats don't look identical
+      demoShotStart = player.x - DEMO_PAN_BLOCKS / 2 + jitter;
+      demoShotEnd = demoShotStart + dir * DEMO_PAN_BLOCKS;
+      demoShotYFixed = CLOUD_SHOT_Y_MIN + ((idx * 977) % (CLOUD_SHOT_Y_MAX - CLOUD_SHOT_Y_MIN + 1));
+    } else if (demoTimelapse) {
+      // camera holds still on the anchor -- no panning -- while time itself
+      // does the moving
+      const anchor = DEMO_ANCHORS[shot.anchorIdx % DEMO_ANCHORS.length];
+      const jitter = (idx * 37) % 101;
+      demoShotStart = anchor + jitter;
+      demoShotEnd = demoShotStart;
+      demoShotYFixed = null;
+    } else {
+      const anchor = DEMO_ANCHORS[shot.anchorIdx % DEMO_ANCHORS.length];
+      const jitter = (idx * 37) % 101; // spreads repeats of the same anchor apart without overshooting into the next one
+      demoShotStart = anchor + jitter;
+      demoShotEnd = demoShotStart + dir * DEMO_PAN_BLOCKS;
+      demoShotYFixed = null;
+    }
+    demoShotElapsed = 0;
+  }
+
+  function demoCamYAt(idx, x) {
+    const shot = DEMO_SHOTS[idx % DEMO_SHOTS.length];
+    if (shot.kind === 'cloud') return demoShotYFixed;
+    // positive depthBias shots are the deliberate underground/seafloor dips
+    // (see DEMO_SHOTS comments) -- those still want the real ground/seafloor
+    // row. Zero-or-negative bias shots are meant to frame the surface
+    // itself (treetop/ground level), so those use surfaceRefAt to land on
+    // the water's surface rather than the ocean floor when over open water.
+    const surf = shot.depthBias > 0 ? frontHeightAt(Math.round(x)) : surfaceRefAt(Math.round(x));
+    return Math.max(0, Math.min(WORLD_H - ROWS, surf + shot.depthBias));
+  }
+
+  let demoCamX = 0, demoCamY = 0;
+  function updateDemoCam(dt) {
+    if (demoShotIdx === -1) { demoShotIdx = 0; pickDemoShot(0); }
+    demoShotElapsed += dt;
+    if (demoShotElapsed >= demoShotDurationMs) {
+      demoShotIdx++;
+      pickDemoShot(demoShotIdx);
+    }
+    // constant panning speed for the whole shot -- no ease in/out, so
+    // consecutive shots never read as randomly speeding up or slowing down
+    const t = Math.min(1, demoShotElapsed / demoShotDurationMs);
+    const x = demoShotStart + (demoShotEnd - demoShotStart) * t;
+    demoCamX = Math.round(x - COLS / 2);
+    demoCamY = demoCamYAt(demoShotIdx, x);
+    if (demoTimelapse) demoTimeFrac = (demoTimeFracStart + t) % 1;
+  }
+
+  function pointInButton(cx, cy) {
+    return cx >= BTN_X && cx < BTN_X + BTN_W && cy >= BTN_Y && cy < BTN_Y + BTN_H;
   }
 
   let lastTime = null;
   let fluidTickAcc = 0;
-  const FLUID_TICK_MS = 150; // how often fluids spread/recede, like Minecraft's water ticks
+  const FLUID_TICK_MS = 220; // how often fluids spread/recede, like Minecraft's water ticks -- slow enough to see it step outward, not so slow it feels sluggish
+  let grassTickAcc = 0;
+  const GRASS_TICK_MS = 500; // grass spreads/decays much slower than fluids flow
+  let cloudCoverageAcc = 0;
+  const CLOUD_COVERAGE_TICK_MS = 250; // how often the weather sim (wind, cohesion, moisture, rain) updates
+  let rainSpawnAcc = 0;
   function loop(ts) {
     if (lastTime !== null) frameDt = ts - lastTime;
     lastTime = ts;
     updateSelName();
-    if (invOpen) {
-      drawInventory();
-    } else if (craftOpen) {
-      drawCraftingUI();
-    } else {
-      update();
+    if (menuOpen) {
+      // let the world keep animating idly behind the opening screen
+      // (weather, water, fire) without responding to player input
+      updateItemDrops();
       fluidTickAcc += frameDt;
       while (fluidTickAcc >= FLUID_TICK_MS) {
         simulateFluids();
+        simulateFire();
         fluidTickAcc -= FLUID_TICK_MS;
       }
+      grassTickAcc += frameDt;
+      while (grassTickAcc >= GRASS_TICK_MS) {
+        simulateGrass();
+        grassTickAcc -= GRASS_TICK_MS;
+      }
+      updateWeatherParticlesMotion(frameDt);
+      cloudCoverageAcc += frameDt;
+      while (cloudCoverageAcc >= CLOUD_COVERAGE_TICK_MS) {
+        weatherTick(CLOUD_COVERAGE_TICK_MS);
+        cloudCoverageAcc -= CLOUD_COVERAGE_TICK_MS;
+      }
+      rainSpawnAcc += frameDt;
+      while (rainSpawnAcc >= RAIN_SPAWN_MS) {
+        spawnRain();
+        rainSpawnAcc -= RAIN_SPAWN_MS;
+      }
+      updateRain(frameDt);
+      updateLightning(frameDt);
+      updateDemoCam(frameDt);
+      draw({ x: demoCamX, y: demoCamY });
+      drawMenu();
+    } else if (invOpen) {
+      drawInventory();
+    } else if (craftOpen) {
+      drawCraftingUI();
+    } else if (tableCraftOpen) {
+      drawTableCraftingUI();
+    } else {
+      update();
+      updateBreaking(frameDt);
+      updateItemDrops();
+      fluidTickAcc += frameDt;
+      while (fluidTickAcc >= FLUID_TICK_MS) {
+        simulateFluids();
+        simulateFire();
+        fluidTickAcc -= FLUID_TICK_MS;
+      }
+      grassTickAcc += frameDt;
+      while (grassTickAcc >= GRASS_TICK_MS) {
+        simulateGrass();
+        grassTickAcc -= GRASS_TICK_MS;
+      }
+      updateWeatherParticlesMotion(frameDt);
+      cloudCoverageAcc += frameDt;
+      while (cloudCoverageAcc >= CLOUD_COVERAGE_TICK_MS) {
+        weatherTick(CLOUD_COVERAGE_TICK_MS);
+        cloudCoverageAcc -= CLOUD_COVERAGE_TICK_MS;
+      }
+      rainSpawnAcc += frameDt;
+      while (rainSpawnAcc >= RAIN_SPAWN_MS) {
+        spawnRain();
+        rainSpawnAcc -= RAIN_SPAWN_MS;
+      }
+      updateRain(frameDt);
+      updateLightning(frameDt);
       draw();
     }
     drawCursor();
