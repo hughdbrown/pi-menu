@@ -10,6 +10,7 @@ sunrise, noon, an eclipse, sunset and the moonlit night in turn.
 
 from __future__ import annotations
 
+from .noise import round_half_up
 from .player import COLS, ROWS
 from .terrain import WORLD_H, Generator
 from .weather import CLOUD_MAX_Y, CLOUD_MIN_Y
@@ -91,7 +92,7 @@ class Demo:
         shot = self.shot
         if shot["kind"] == CLOUD:
             return self.fixed_y
-        column = int(x + 0.5) if x >= 0 else -int(-x + 0.5)
+        column = round_half_up(x)
         if shot["depth"] > 0:
             surf = self.gen.front_height(column)
         else:
@@ -106,7 +107,7 @@ class Demo:
             self.pick(self.index + 1)
         t = min(1.0, self.elapsed / self.duration)
         x = self.start_x + (self.end_x - self.start_x) * t
-        self.cam_x = int((x - COLS / 2) + 0.5) if x - COLS / 2 >= 0 else -int(-(x - COLS / 2) + 0.5)
+        self.cam_x = round_half_up(x - COLS / 2)
         self.cam_y = self.cam_y_at(x)
         if self.timelapse:
             self.time_frac = (self.time_start + t) % 1

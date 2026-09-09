@@ -391,9 +391,9 @@ class Session:
         if self.screen is Screen.INVENTORY:
             return f"inventory  ·  Enter picks up and puts down  ·  Esc closes  ·  block: {held}"
         if self.screen is Screen.BENCH:
-            return f"crafting bench  ·  2x2 grid, output to its right  ·  Esc closes"
+            return "crafting bench  ·  2x2 grid, output to its right  ·  Esc closes"
         if self.screen is Screen.TABLE:
-            return f"crafting table  ·  3x3 grid, output to its right  ·  Esc closes"
+            return "crafting table  ·  3x3 grid, output to its right  ·  Esc closes"
         hour = self.day.local_day_frac(self.player.x, self.now_ms) * 24
         return (
             f"♥ {self.player.hp}  ·  block: {held}  ·  layer: {layer}  ·  "

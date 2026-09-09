@@ -31,6 +31,7 @@ from .inventory import (
     Inventory,
 )
 from .player import BLOCK, COLS, PLAYER_COLOUR, ROWS, Breaker, Drops, Player
+from .sky import draw_sky
 from .terrain import BACK, FRONT, World
 from .weather import CLOUD_MAX_Y, Weather
 
@@ -202,8 +203,6 @@ def draw_world(
     active_layer: int = FRONT,
 ) -> None:
     """The whole scene. With no player this is the opening screen's demo."""
-    from .sky import draw_sky
-
     draw_sky(canvas, sky_frac, moon_phase, stars, now_ms / 1000.0, weather.celestial_visibility)
     below_clouds = ref_y >= CLOUD_MAX_Y + 10
     weather.draw_overcast(canvas, below_clouds)

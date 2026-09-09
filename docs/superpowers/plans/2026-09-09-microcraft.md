@@ -112,74 +112,90 @@ Registration: `pyproject.toml` script `pi-microcraft`, `apps.json` entry,
 
 Each task: tests first where the behaviour is pure, `pytest -q`, commit.
 
-- [ ] **Task 1 — sprites and tiles.** `tools/extract_microcraft_sprites.py`
+- [x] **Task 1 — sprites and tiles.** `tools/extract_microcraft_sprites.py`
   decodes the base64 PNGs and writes `sprites.py`; `tiles.py` carries every
   id/name/set from the HTML. Tests: every tile and item has a sprite and a
   name; fluids/items/tools sets are disjoint where they should be.
   Commit: `feat(microcraft): tiles and the sprite sheets`.
-- [ ] **Task 2 — noise and terrain.** `noise.py`, `terrain.py` with `World`.
+- [x] **Task 2 — noise and terrain.** `noise.py`, `terrain.py` with `World`.
   Tests: `hash2` is deterministic and in `[0,1)`; `wrap_x` folds both ends;
   `front_height` is stable under wrapping; a flooded column has water from
   sea level to the bed and sand/clay beneath; trees never stand in water or
   above the tree line; `find_spawn_x` lands on dry land; set/get round-trips
   across a chunk edge; below the world is stone, above is sky.
   Commit: `feat(microcraft): a looping world generated on demand`.
-- [ ] **Task 3 — simulation.** `sim.py`. Tests: a water source over air
+- [x] **Task 3 — simulation.** `sim.py`. Tests: a water source over air
   drips a falling tile; a source on a shelf tapers R1, R2, R3 and stops;
   removing the source recedes the flow; two sources make a third; a plank
   beside lava burns away in 30 ticks; water beside a burning plank saves it;
   clay beside fire becomes brick; sunlit dirt beside grass greens (rng
   pinned); covered grass dies after 24 ticks.
   Commit: `feat(microcraft): water, lava, fire and grass`.
-- [ ] **Task 4 — canvas and sky.** `canvas.py`, `sky.py`. Tests: blending a
+- [x] **Task 4 — canvas and sky.** `canvas.py`, `sky.py`. Tests: blending a
   half-alpha white over black gives grey; invert flips; the sky at noon is
   blue, at midnight near black; the moon plus has 5 lit pixels at full and
   0 at new; an eclipse draws a dark centre with a corona.
   Commit: `feat(microcraft): a blending canvas and the sky`.
-- [ ] **Task 5 — weather.** `weather.py`. Tests: clouds seed without
+- [x] **Task 5 — weather.** `weather.py`. Tests: clouds seed without
   overlap; a cloud drifting out of range is recycled behind the leftmost;
   cover under a cumulonimbus is higher than under cumulus; rain only spawns
   under raining clouds and respects the per-column cap; a drop lands on the
   first solid row; lightning only from cumulonimbus; wave height is 0 in a
   shallow pond and > 0 in deep ocean.
   Commit: `feat(microcraft): clouds, rain, lightning and waves`.
-- [ ] **Task 6 — inventory and crafting.** `inventory.py`. Tests: pick-up
+- [x] **Task 6 — inventory and crafting.** `inventory.py`. Tests: pick-up
   fills partial stacks before empty slots; tools stack to one; select/move/
   swap/merge with overflow; double-tap arms a split and the split halves;
   each recipe on the bench and, shifted, on the table; the stone tool
   patterns incl. both axe hands; output crafts once and consumes then;
   closing a bench returns leftovers.
   Commit: `feat(microcraft): the inventory and both crafting benches`.
-- [ ] **Task 7 — player.** `player.py`. Tests: falls to the ground and
+- [x] **Task 7 — player.** `player.py`. Tests: falls to the ground and
   stops flush; a wall stops walking; jump rises and lands; water is
   buoyant and W swims up; the core teleports to the antipode; breaking
   takes the tabled time, faster with the right tool; a placed block
   decrements the stack; can't place inside the player; buckets scoop and
   pour; drops fall, land, bob, and are picked up after the grace period.
   Commit: `feat(microcraft): a player who walks, swims, digs and builds`.
-- [ ] **Task 8 — rendering.** `render.py`. Tests: frames are 768 bytes;
+- [x] **Task 8 — rendering.** `render.py`. Tests: frames are 768 bytes;
   the front layer is drawn over the darkened background; the hotbar sits on
   the bottom row with the selected slot blinking white; the inventory
   screen has the exit tile at (14,0); the bench and table layouts match
   their hit tests; the opening panel is grey with the play button at
   (4..11, 5..7); the cursor inverts its pixel.
   Commit: `feat(microcraft): paint the world and the screens`.
-- [ ] **Task 9 — demo and session.** `demo.py`, `session.py`. Tests: opens
+- [x] **Task 9 — demo and session.** `demo.py`, `session.py`. Tests: opens
   on the menu; Enter on the play button starts play, elsewhere does not;
   E opens and closes the inventory; the bench opens from the inventory
   button and the table from a placed table; Esc closes each; every
   transition pushes a frame; ticks advance fluids on schedule; status text
   names the held stack and layer.
   Commit: `feat(microcraft): one state machine for every screen`.
-- [ ] **Task 10 — app, registration, docs.** `app.py`, `pyproject.toml`,
+- [x] **Task 10 — app, registration, docs.** `app.py`, `pyproject.toml`,
   `apps.json`, `install.sh`, README. Tests: entry-point smoke tests join the
   parametrised lists; `--list` names MicroCraft; install script tests cover
   the new desktop file.
   Commit: `feat(microcraft): put MicroCraft on the menu`.
-- [ ] **Task 11 — review pass.** Run the whole suite, time a tick on this
+- [x] **Task 11 — review pass.** Run the whole suite, time a tick on this
   machine, read the code once more for anything the port lost.
 
 ## 6. Performance budget
+
+Measured on the dev Mac (Python 3.14) once the port was complete: a world
+tick including the frame is 1–3 ms, a fluid tick 0.7–1.5 ms with a lake in
+the box, cloud drawing about 1 ms for a storm centred on screen, a fresh
+chunk 14 ms, start-up 60 ms. All inside the targets below.
+
+### Added during the port
+
+- **`palette.py`.** The user pointed out mid-port that the target is the
+  Stellar Unicorn's LEDs, whose gamma makes anything under about 40 read as
+  off, and that at two LEDs a block the HTML's greys were indistinguishable.
+  Every block and item now has its own two-tone pattern lifted above the
+  floor and given a hue no neighbour shares; a test asserts pairwise
+  separation. Layout and behaviour are unchanged.
+- **`tools/extract_microcraft_sprites.py`** regenerates `sprites.py` from the
+  HTML's embedded PNGs; the palette overrides are applied on top at import.
 
 A tick has 50 ms. Targets measured with `python -m timeit` on the dev Mac,
 which is faster than a Pi 4 by roughly 3×, so aim for ≤ 12 ms here:
