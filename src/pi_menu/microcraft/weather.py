@@ -21,7 +21,7 @@ from ..display.protocol import HEIGHT, WIDTH
 from .canvas import Canvas
 from .noise import noise1d
 from .terrain import SEA_LEVEL, SURFACE_BASE, WORLD_H, World
-from . import tiles
+from . import palette, tiles
 
 BLOCK = 2
 COLS = WIDTH // BLOCK
@@ -648,7 +648,7 @@ class Weather:
         """Ripples cut from the water tile's own top pixels, rising above
         every open water surface on screen."""
         world = self.world
-        sheet = tiles.tile_art(tiles.WATER)[0]
+        sheet = palette.tile_art(tiles.WATER)[0]
         sx, sy = tiles.SHEET_POS[tiles.WATER]
         for ry in range(ROWS):
             for rx in range(COLS):

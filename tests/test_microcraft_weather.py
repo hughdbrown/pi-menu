@@ -7,7 +7,7 @@ import random
 
 import pytest
 
-from pi_menu.microcraft import tiles, weather
+from pi_menu.microcraft import palette, tiles, weather
 from pi_menu.microcraft.canvas import Canvas
 from pi_menu.microcraft.terrain import FRONT, SEA_LEVEL, World
 from pi_menu.microcraft.weather import (
@@ -321,5 +321,5 @@ def test_waves_are_drawn_from_the_water_tile_s_own_pixels(wx, world):
             for y in range(8):
                 if canvas.get(x, y) != (0, 0, 0):
                     crests.add(canvas.get(x, y))
-    water_top = {tiles.tile_art(tiles.WATER)[0][2][2], tiles.tile_art(tiles.WATER)[0][2][3]}
+    water_top = {palette.tile_art(tiles.WATER)[0][2][2], palette.tile_art(tiles.WATER)[0][2][3]}
     assert crests and all(c in water_top or c[0] > 0 for c in crests)

@@ -12,8 +12,6 @@ from __future__ import annotations
 
 from typing import NamedTuple
 
-from . import sprites
-
 # -- blocks --------------------------------------------------------------
 
 SKY = 0
@@ -104,7 +102,6 @@ ITEMS = frozenset(ITEM_SHEET_POS)
 UI_EMPTY_X = 0
 UI_EXIT_X = 2
 UI_BG_X = 4
-UI_BG_COLOUR = sprites.UI_SHEET[0][UI_BG_X]
 
 # -- names ---------------------------------------------------------------
 
@@ -244,38 +241,3 @@ def break_time_ms(kind: int, held: int | None = None) -> float:
         if kind in PICKAXE_BLOCKS and held in PICKAXE_MULT:
             return base * PICKAXE_MULT[held]
     return base
-
-
-# -- art lookups ---------------------------------------------------------
-
-
-def tile_art(kind: int) -> tuple[tuple, int, int, bool]:
-    """``(sheet, sx, sy, mirrored)`` for any block or item."""
-    if kind in ITEMS:
-        sx, sy = ITEM_SHEET_POS[kind]
-        return sprites.ITEM_SHEET, sx, sy, False
-    if kind in FLOW_TILES:
-        sx, sy = FLUID_SHEET_POS[kind]
-        return sprites.FLUID_SHEET, sx, sy, kind in MIRRORED_TILES
-    sx, sy = SHEET_POS[kind]
-    return sprites.BLOCK_SHEET, sx, sy, False
-
-
-def _average(sheet, sx: int, sy: int) -> tuple[int, int, int]:
-    samples = [
-        sheet[sy + dy][sx + dx]
-        for dy in range(2)
-        for dx in range(2)
-        if sheet[sy + dy][sx + dx] is not None
-    ]
-    if not samples:
-        return (128, 128, 128)
-    n = len(samples)
-    return tuple(round(sum(p[i] for p in samples) / n) for i in range(3))
-
-
-#: The one-pixel colour a dropped item is drawn with.
-AVERAGE_COLOUR = {
-    kind: _average(*tile_art(kind)[:3])
-    for kind in list(SHEET_POS) + list(ITEM_SHEET_POS)
-}

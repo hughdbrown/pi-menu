@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from pi_menu.microcraft import sprites, tiles
+from pi_menu.microcraft import palette, sprites, tiles
 
 
 def test_every_named_thing_has_art_and_every_drawn_thing_has_a_name():
@@ -29,22 +29,22 @@ def test_the_sheets_are_the_sizes_the_html_declares():
 
 
 def test_grass_is_green_on_top_and_water_is_blue():
-    assert tiles.AVERAGE_COLOUR[tiles.GRASS][1] > tiles.AVERAGE_COLOUR[tiles.GRASS][0]
-    r, g, b = tiles.AVERAGE_COLOUR[tiles.WATER]
+    assert palette.AVERAGE_COLOUR[tiles.GRASS][1] > palette.AVERAGE_COLOUR[tiles.GRASS][0]
+    r, g, b = palette.AVERAGE_COLOUR[tiles.WATER]
     assert b > r and b > g
 
 
 def test_items_have_transparent_corners_but_blocks_do_not():
-    sheet, sx, sy, _ = tiles.tile_art(tiles.STICK)
+    sheet, sx, sy, _ = palette.tile_art(tiles.STICK)
     assert sheet[sy][sx] is None  # the stick's top-left pixel is empty
-    sheet, sx, sy, _ = tiles.tile_art(tiles.DIRT)
+    sheet, sx, sy, _ = palette.tile_art(tiles.DIRT)
     assert all(sheet[sy + dy][sx + dx] is not None for dy in range(2) for dx in range(2))
 
 
 def test_left_flowing_fluids_mirror_the_right_facing_art():
-    assert tiles.tile_art(tiles.WATER_FLOW_L2)[3] is True
-    assert tiles.tile_art(tiles.WATER_FLOW_R2)[3] is False
-    assert tiles.tile_art(tiles.WATER_FLOW_L2)[1:3] == tiles.tile_art(tiles.WATER_FLOW_R2)[1:3]
+    assert palette.tile_art(tiles.WATER_FLOW_L2)[3] is True
+    assert palette.tile_art(tiles.WATER_FLOW_R2)[3] is False
+    assert palette.tile_art(tiles.WATER_FLOW_L2)[1:3] == palette.tile_art(tiles.WATER_FLOW_R2)[1:3]
 
 
 def test_fluid_metadata_covers_every_fluid_and_nothing_else():
@@ -97,5 +97,6 @@ def test_the_right_tool_speeds_its_own_blocks_and_nothing_else():
     assert tiles.break_time_ms(9999) == tiles.DEFAULT_BREAK_MS
 
 
-def test_the_ui_background_colour_is_read_from_the_sheet():
-    assert tiles.UI_BG_COLOUR == (156, 156, 156)
+def test_the_ui_background_colour_is_the_sheet_s_grey_lifted_for_the_leds():
+    assert palette.UI_BG_COLOUR == palette.lift((156, 156, 156))
+    assert palette.UI_BG_COLOUR[0] > 156
