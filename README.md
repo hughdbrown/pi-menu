@@ -244,8 +244,11 @@ name a device explicitly.
 
 ## Adding your own programs
 
-`install.sh` copies the app list to `~/.config/pi-menu/apps.json`. Add an
-entry and press *Reload list*:
+`install.sh` copies the app list to `~/.config/pi-menu/apps.json` the first
+time and leaves it alone after that. Apps that a later version of pi-menu
+ships still appear: anything in the packaged list that your file does not
+mention is added after your own entries. To hide one, list it with
+`"enabled": false`. Add an entry and press *Reload list*:
 
 ```json
 {

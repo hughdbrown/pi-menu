@@ -1,11 +1,16 @@
 """The registry of applications the menu offers.
 
 The list lives in JSON so you can add your own programs without editing
-any Python. The first of these that exists wins:
+any Python. The first of these that exists is read:
 
 1. ``$PI_MENU_APPS``
 2. ``~/.config/pi-menu/apps.json``
 3. the ``apps.json`` shipped inside the package
+
+Any app the package ships that the chosen file does not mention (by ``id``)
+is appended after the file's own entries, so a user file written before an
+app existed still offers it. To hide a packaged app, list it with
+``"enabled": false``.
 """
 
 from __future__ import annotations
@@ -69,8 +74,22 @@ def apps_path() -> Path:
 
 
 def load_apps(path: Path | None = None) -> list[AppEntry]:
-    """Read the app registry. Raises :class:`ConfigError` on bad input."""
-    path = path or apps_path()
+    """Read the app registry. Raises :class:`ConfigError` on bad input.
+
+    With no ``path`` the file from :func:`apps_path` is read and packaged
+    apps it leaves out are appended; an explicit ``path`` is read as is.
+    """
+    if path is not None:
+        return _read(path)
+    path = apps_path()
+    apps = _read(path)
+    if path == PACKAGED_APPS:
+        return apps
+    known = {app.id for app in apps}
+    return apps + [app for app in _read(PACKAGED_APPS) if app.id not in known]
+
+
+def _read(path: Path) -> list[AppEntry]:
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:

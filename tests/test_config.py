@@ -108,3 +108,28 @@ def test_the_environment_variable_overrides_the_packaged_list(tmp_path, monkeypa
 
     assert apps_path() == path
     assert load_apps()[0].name == "Override"
+
+
+def test_new_packaged_apps_are_appended_to_an_older_user_list(tmp_path, monkeypatch):
+    # A user file written before an app shipped must still show that app,
+    # after the user's own entries; a user entry with the same id wins.
+    path = write(
+        tmp_path,
+        [
+            {"id": "mine", "name": "Mine", "command": ["true"]},
+            {"id": "life", "name": "My Life", "command": ["true"]},
+        ],
+    )
+    monkeypatch.setenv("PI_MENU_APPS", str(path))
+
+    apps = load_apps()
+    ids = [app.id for app in apps]
+    assert ids[:2] == ["mine", "life"]
+    assert "microcraft" in ids and "doctor" in ids
+    assert ids.count("life") == 1
+    assert next(app for app in apps if app.id == "life").name == "My Life"
+
+
+def test_an_explicit_path_is_read_as_is(tmp_path):
+    path = write(tmp_path, [{"id": "only", "name": "Only", "command": ["true"]}])
+    assert [app.id for app in load_apps(path)] == ["only"]
