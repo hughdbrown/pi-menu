@@ -24,7 +24,11 @@ from typing import Callable, Optional
 from . import render, sim
 from .canvas import Canvas
 from .demo import Demo
-from .inventory import BACKPACK, CRAFT, HOTBAR, OUTPUT, TABLE, TABLE_OUTPUT, Inventory
+from .furnace import Furnace
+from .inventory import (
+    ARMOR, BACKPACK, CRAFT, FURNACE_FUEL, FURNACE_ITEM, FURNACE_OUTPUT,
+    HOTBAR, OUTPUT, TABLE, TABLE_OUTPUT, Inventory,
+)
 from .player import (
     BLOCK,
     COLS,
@@ -51,7 +55,8 @@ TICK_MS = 1000 / TICK_HZ
 
 # Held keys.
 BREAK = "break"
-HELD_KEYS = frozenset((LEFT, RIGHT, JUMP_KEY, BREAK))
+SHOW_STRIP = "show_strip"
+HELD_KEYS = frozenset((LEFT, RIGHT, JUMP_KEY, BREAK, SHOW_STRIP))
 # Tapped keys.
 CURSOR_LEFT = "cursor_left"
 CURSOR_RIGHT = "cursor_right"
@@ -80,6 +85,7 @@ class Screen(enum.Enum):
     INVENTORY = "inventory"
     BENCH = "bench"
     TABLE = "table"
+    FURNACE = "furnace"
 
 
 class Session:
@@ -97,6 +103,7 @@ class Session:
         self.seed = seed if seed is not None else self.rng.randrange(2**31 - 1)
         self.wall_clock = wall_clock
         self.now_ms = 0.0
+        self._last_dt = TICK_MS
 
         self.world = World(self.seed)
         spawn_x = self.world.gen.find_spawn_x()
@@ -105,11 +112,13 @@ class Session:
         self.drops = Drops()
         self.breaker = Breaker()
         self.lighter = StickLighter()
+        self.furnace = Furnace()
         self.weather = Weather(self.world, self.rng, spawn_x)
         self.day = DayClock()
         self.day.anchor_noon(spawn_x, self.now_ms)
         self.stars = make_stars(self.rng)
         self.demo = Demo(self.world.gen, spawn_x)
+        self.item_strip = render.ItemStrip()
 
         self.screen = Screen.MENU
         self.cursor = [8, 6]  # on the opening screen's play button
@@ -150,12 +159,18 @@ class Session:
             self.toggle_layer()
         elif key == DROP:
             self._drop_tap()
+        elif key == SHOW_STRIP:
+            self._held.add(key)
+            self.push()
+            return
         elif key == BACK_KEY:
             self.back()
         self.push()
 
     def release(self, key: str) -> None:
         self._held.discard(key)
+        if key == SHOW_STRIP:
+            self.push()
 
     def select_slot(self, index: int) -> None:
         self.inventory.select_slot(index)
@@ -182,6 +197,8 @@ class Session:
             self._close_bench()
         elif self.screen is Screen.TABLE:
             self._close_table()
+        elif self.screen is Screen.FURNACE:
+            self._close_furnace()
         elif self.screen is Screen.WORLD:
             self.screen = Screen.MENU
             self.breaker.reset()
@@ -228,6 +245,19 @@ class Session:
         self.drops.spawn_stacks(leftovers, self.player.x, self.player.y, self.now_ms)
         self.screen = Screen.WORLD
 
+    def _open_furnace(self) -> None:
+        self.screen = Screen.FURNACE
+        self.inventory.deselect()
+        self.breaker.reset()
+        self._sync_furnace_slots()
+
+    def _close_furnace(self) -> None:
+        self._sync_furnace_slots()
+        leftovers = self.furnace.empty_back_to(self.inventory)
+        self.drops.spawn_stacks(leftovers, self.player.x, self.player.y, self.now_ms)
+        self.inventory.deselect()
+        self.screen = Screen.WORLD
+
     def cursor_world(self) -> Optional[tuple]:
         """The world cell under the cursor, or None above or below the world."""
         cam_x, cam_y = camera(self.player.x, self.player.y)
@@ -251,7 +281,7 @@ class Session:
             elif region == "openCraft":
                 self.screen = Screen.BENCH
                 self.breaker.reset()
-            elif region in (BACKPACK, HOTBAR):
+            elif region in (BACKPACK, HOTBAR, ARMOR):
                 self.inventory.slot_click(region, index, self.now_ms)
             return
         if self.screen is Screen.BENCH:
@@ -272,6 +302,16 @@ class Session:
             elif region in (TABLE, BACKPACK, HOTBAR):
                 self.inventory.slot_click(region, index, self.now_ms)
             return
+        if self.screen is Screen.FURNACE:
+            region, index = Inventory.hit_furnace(cx, cy)
+            if region == "exit":
+                self._close_furnace()
+            elif region == "oxygen":
+                self.furnace.press_oxygen()
+            elif region in (FURNACE_FUEL, FURNACE_ITEM, FURNACE_OUTPUT, BACKPACK, HOTBAR):
+                self.inventory.slot_click(region, index, self.now_ms)
+                self._push_furnace_slots()
+            return
 
         target = self.cursor_world()
         if target is None:
@@ -284,15 +324,34 @@ class Session:
         ):
             self._open(Screen.TABLE)
             return
+        if (
+            self.world.get(self.active_layer, wx, wy) == tiles.FURNACE
+            and not (held is not None and held.kind == tiles.STICK)
+        ):
+            self._open_furnace()
+            return
         place_at(
             self.world, self.active_layer, wx, wy, self.player,
             self.inventory, self.lighter, self.now_ms,
         )
 
+    def _sync_furnace_slots(self) -> None:
+        """Copy the three furnace slots into the inventory UI slots."""
+        self.inventory.furnace_fuel[0] = self.furnace.fuel_slot
+        self.inventory.furnace_item[0] = self.furnace.item_slot
+        self.inventory.furnace_output[0] = self.furnace.output_slot
+
+    def _push_furnace_slots(self) -> None:
+        """Copy the inventory UI slots into the furnace simulation."""
+        self.furnace.fuel_slot = self.inventory.furnace_fuel[0]
+        self.furnace.item_slot = self.inventory.furnace_item[0]
+        self.furnace.output_slot = self.inventory.furnace_output[0]
+
     # -- the clock -------------------------------------------------------------
 
     def tick(self, dt_ms: float = TICK_MS) -> None:
         """Advance everything on screen by ``dt_ms`` and push a frame."""
+        self._last_dt = dt_ms
         self.now_ms += dt_ms
         if self.screen is Screen.MENU:
             self.drops.update(self.world, self.player, self.inventory, self.now_ms)
@@ -331,6 +390,11 @@ class Session:
         while self._grass_acc >= GRASS_TICK_MS:
             sim.simulate_grass(self.world, px, py, self.rng)
             self._grass_acc -= GRASS_TICK_MS
+        if self.screen is Screen.FURNACE:
+            self._push_furnace_slots()
+        self.furnace.update(dt_ms)
+        if self.screen is Screen.FURNACE:
+            self._sync_furnace_slots()
         cam_x = self.demo.cam_x if self.screen is Screen.MENU else camera(self.player.x, self.player.y)[0]
         self.weather.update_motion(dt_ms, cam_x)
         self._weather_acc += dt_ms
@@ -368,17 +432,52 @@ class Session:
             render.draw_bench(canvas, self.inventory, self.now_ms)
         elif self.screen is Screen.TABLE:
             render.draw_table(canvas, self.inventory, self.now_ms)
+        elif self.screen is Screen.FURNACE:
+            render.draw_furnace(canvas, self.inventory, self.furnace, self.now_ms)
         else:
             cam_x, cam_y = camera(self.player.x, self.player.y)
+            strip_stack = None
+            if self.item_strip is not None:
+                if self.screen is Screen.WORLD:
+                    strip_stack = self.inventory.held
+                else:
+                    # in inventory-style screens, show the held cursor stack
+                    # or the stack under the cursor only while the strip key
+                    # is held; otherwise show the held hotbar item
+                    if SHOW_STRIP in self._held:
+                        if self.inventory.selection is not None:
+                            strip_stack = self.inventory.get(*self.inventory.selection)
+                        else:
+                            region, index = self._hovered_slot()
+                            if region in (ARMOR, BACKPACK, HOTBAR, CRAFT, OUTPUT, TABLE, TABLE_OUTPUT,
+                                          FURNACE_FUEL, FURNACE_ITEM, FURNACE_OUTPUT):
+                                strip_stack = self.inventory.get(region, index)
+                    else:
+                        strip_stack = self.inventory.held
+                self.item_strip.update(strip_stack, self._last_dt or TICK_MS)
+
             render.draw_world(
                 canvas, self.world, self.weather, cam_x, cam_y,
                 sky_frac=self.day.local_day_frac(self.player.x, self.now_ms),
                 moon_phase=self.moon_phase(), stars=self.stars, now_ms=self.now_ms,
                 ref_y=self.player.y, player=self.player, breaker=self.breaker,
                 inventory=self.inventory, drops=self.drops, active_layer=self.active_layer,
+                item_strip=self.item_strip,
             )
         render.draw_cursor(canvas, self.cursor[0], self.cursor[1])
         return canvas.to_bytes()
+
+    def _hovered_slot(self) -> tuple:
+        cx, cy = self.cursor
+        if self.screen is Screen.INVENTORY:
+            return Inventory.hit_inventory(cx, cy)
+        if self.screen is Screen.BENCH:
+            return Inventory.hit_bench(cx, cy)
+        if self.screen is Screen.TABLE:
+            return Inventory.hit_table(cx, cy)
+        if self.screen is Screen.FURNACE:
+            return Inventory.hit_furnace(cx, cy)
+        return "bg", -1
 
     def push(self) -> None:
         self._sink(self.framebuffer())
@@ -394,6 +493,8 @@ class Session:
             return "crafting bench  ·  2x2 grid, output to its right  ·  Esc closes"
         if self.screen is Screen.TABLE:
             return "crafting table  ·  3x3 grid, output to its right  ·  Esc closes"
+        if self.screen is Screen.FURNACE:
+            return "furnace  ·  fuel, smelt, output, oxygen  ·  Esc closes"
         hour = self.day.local_day_frac(self.player.x, self.now_ms) * 24
         return (
             f"♥ {self.player.hp}  ·  block: {held}  ·  layer: {layer}  ·  "

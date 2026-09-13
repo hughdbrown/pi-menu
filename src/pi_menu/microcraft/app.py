@@ -32,6 +32,7 @@ from .session import (
     INVENTORY,
     LAYER,
     SELECT,
+    SHOW_STRIP,
     TICK_MS,
     Session,
 )
@@ -50,6 +51,7 @@ HELD_KEYSYMS = {
     "d": RIGHT, "D": RIGHT,
     "w": JUMP_KEY, "W": JUMP_KEY, "space": JUMP_KEY,
     "BackSpace": BREAK,
+    "i": SHOW_STRIP, "I": SHOW_STRIP,
 }
 
 #: Tk keysym -> a key the session acts on at once. Auto-repeat is welcome
@@ -61,7 +63,7 @@ TAP_KEYSYMS = {
     "Down": CURSOR_DOWN,
     "Return": SELECT,
     "KP_Enter": SELECT,
-    "e": INVENTORY, "E": INVENTORY, "i": INVENTORY, "I": INVENTORY,
+    "e": INVENTORY, "E": INVENTORY,
     "l": LAYER, "L": LAYER,
     "q": DROP, "Q": DROP,
     "Escape": BACK_KEY,
