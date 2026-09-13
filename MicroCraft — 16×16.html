@@ -63,6 +63,16 @@
     background: #5c94fc;
     border: 1px solid var(--line);
     touch-action: none;
+    display: block;
+  }
+  /* wraps the canvas; the item-name strip itself is now drawn directly onto
+     the canvas bitmap (see drawItemStrip in the script) so it's made of the
+     same real, blocky pixels as the rest of the game instead of smooth
+     HTML/CSS text floating on top of it. */
+  .canvasWrap {
+    position: relative;
+    width: 100%;
+    max-width: 384px;
   }
   .hud {
     display: flex;
@@ -136,6 +146,7 @@
   }
   .tbtn.mode.place { color: var(--accent2); border-color: var(--accent2); }
   .tbtn.drop { color: var(--accent2); border-color: var(--accent2); }
+  .tbtn.mode.info { color: var(--accent); border-color: var(--accent); }
 
   /* cursor d-pad: moves the white pixel reticle */
   .cursor-dpad {
@@ -194,7 +205,9 @@
 <h1>MICRO<span>CRAFT</span> — 16×16px world</h1>
 
 <div class="stage">
-  <canvas id="game" width="16" height="16"></canvas>
+  <div class="canvasWrap">
+    <canvas id="game" width="16" height="16"></canvas>
+  </div>
   <div class="hud">
     <span>❤ <b id="hp">10</b></span>
     <span>block: <b id="selName">dirt x16</b></span>
@@ -211,6 +224,7 @@
       <div class="tbtn jump" id="btnJump">JUMP</div>
       <div class="tbtn mode" id="btnLayer">FRONT</div>
       <div class="tbtn mode drop" id="btnDrop">DROP</div>
+      <div class="tbtn mode info" id="btnInfo">NAME</div>
     </div>
     <div class="touch-row">
       <div class="cursor-dpad">
@@ -238,13 +252,15 @@
   <div class="help desktop-only">
     <b>W/A/S/D</b> move · <b>Space</b> jump · <b>L</b> toggle mining/placing between front and background layers<br>
     <b>Arrow keys</b> move the white pixel cursor · <b>Enter</b> place/interact · hold <b>Backspace</b> to break a block<br>
-    <b>1-8</b> select hotbar slot · <b>E</b> or <b>[inventory]</b> to open/close your inventory
+    <b>1-8</b> select hotbar slot · <b>E</b> or <b>[inventory]</b> to open/close your inventory<br>
+    Hold <b>I</b> to show the name of the item you've got selected, in the hotbar or any inventory screen
   </div>
   <div class="help mobile-only">
     Use the <b>◀ ▶</b> buttons to move and <b>JUMP</b> to jump · <b>FRONT/BACK</b> switches which layer you're targeting<br>
     Use the small <b>▲▼◀▶</b> pad to move the white pixel cursor<br>
     <b>PLACE</b> places/interacts · hold <b>BREAK</b> until it breaks, both target the cursor<br>
-    Tap <b>1-8</b> to pick a hotbar slot · tap <b>[inventory]</b> to manage your items
+    Tap <b>1-8</b> to pick a hotbar slot · tap <b>[inventory]</b> to manage your items<br>
+    Hold <b>NAME</b> to show the name of whatever item you've got selected
   </div>
 </div>
 
@@ -263,6 +279,76 @@
 
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
+
+  // ---- tiny 3x5 pixel font, used to draw the item-name strip as real
+  // canvas pixels instead of HTML/CSS text. Only the characters that can
+  // actually show up in an item name are defined (A-Z, 0-9, space); the
+  // strip text is uppercased before drawing. '1' = lit pixel, row-major,
+  // 3 columns wide x 5 rows tall. ----
+  const FONT_3X5 = {
+    'A': ['111','101','111','101','101'],
+    'B': ['110','101','110','101','110'],
+    'C': ['011','100','100','100','011'],
+    'D': ['110','101','101','101','110'],
+    'E': ['111','100','110','100','111'],
+    'F': ['111','100','110','100','100'],
+    'G': ['011','100','101','101','011'],
+    'H': ['101','101','111','101','101'],
+    'I': ['111','010','010','010','111'],
+    'J': ['001','001','001','101','010'],
+    'K': ['101','101','110','101','101'],
+    'L': ['100','100','100','100','111'],
+    'M': ['101','111','111','101','101'],
+    'N': ['101','111','111','111','101'],
+    'O': ['010','101','101','101','010'],
+    'P': ['110','101','110','100','100'],
+    'Q': ['010','101','101','111','011'],
+    'R': ['110','101','110','101','101'],
+    'S': ['011','100','010','001','110'],
+    'T': ['111','010','010','010','010'],
+    'U': ['101','101','101','101','111'],
+    'V': ['101','101','101','101','010'],
+    'W': ['101','101','111','111','101'],
+    'X': ['101','101','010','101','101'],
+    'Y': ['101','101','010','010','010'],
+    'Z': ['111','001','010','100','111'],
+    '0': ['010','101','101','101','010'],
+    '1': ['010','110','010','010','111'],
+    '2': ['110','001','010','100','111'],
+    '3': ['110','001','010','001','110'],
+    '4': ['101','101','111','001','001'],
+    '5': ['111','100','110','001','110'],
+    '6': ['011','100','110','101','010'],
+    '7': ['111','001','010','010','010'],
+    '8': ['010','101','010','101','010'],
+    '9': ['010','101','011','001','110'],
+    ' ': ['000','000','000','000','000'],
+  };
+  const GLYPH_W = 3, GLYPH_H = 5, GLYPH_ADVANCE = GLYPH_W + 1; // 1px gap between letters
+
+  // width in real pixels a string will occupy when drawn with drawPixelText
+  function pixelTextWidth(str) { return Math.max(0, str.length * GLYPH_ADVANCE - 1); }
+
+  // draws a string of real, blocky pixels onto the game canvas, x may be
+  // fractional (rounded per-glyph) so it can be smoothly scrolled
+  function drawPixelText(str, x, y, color) {
+    ctx.fillStyle = color;
+    let cx = x;
+    for (const ch of str) {
+      const glyph = FONT_3X5[ch];
+      if (glyph) {
+        for (let row = 0; row < GLYPH_H; row++) {
+          for (let col = 0; col < GLYPH_W; col++) {
+            if (glyph[row][col] === '1') {
+              const px = Math.round(cx) + col;
+              if (px >= 0 && px < VIEW) ctx.fillRect(px, y + row, 1, 1);
+            }
+          }
+        }
+      }
+      cx += GLYPH_ADVANCE;
+    }
+  }
   ctx.imageSmoothingEnabled = false;
 
   // ---- world ----
@@ -322,8 +408,16 @@
   // always matches the actual moon phase outside right now.
   const SYNODIC_MONTH_DAYS = 29.530588853;
   const KNOWN_NEW_MOON_MS = Date.UTC(2000, 0, 6, 18, 14); // a real new moon reference point
+  // each session gets its own random offset into the cycle -- the moon
+  // still waxes and wanes smoothly like a real one over real time, but
+  // isn't pinned to today's literal real-world phase. Without this,
+  // whenever the actual moon outside happened to be near new, every spawn
+  // (always at local noon, see the dayCycleStart anchoring below) would
+  // trigger a total eclipse for days in a row, purely by calendar
+  // coincidence.
+  const MOON_PHASE_OFFSET_MS = Math.random() * SYNODIC_MONTH_DAYS * 86400000;
   function moonPhaseFrac() {
-    const days = (Date.now() - KNOWN_NEW_MOON_MS) / 86400000;
+    const days = (Date.now() + MOON_PHASE_OFFSET_MS - KNOWN_NEW_MOON_MS) / 86400000;
     return ((days % SYNODIC_MONTH_DAYS) / SYNODIC_MONTH_DAYS + 1) % 1; // 0 = new, 0.5 = full
   }
   function moonIllumination(mp) { return (1 - Math.cos(mp * Math.PI * 2)) / 2; } // 0..1 lit fraction
@@ -401,17 +495,9 @@
   const MOON_WANE_ORDER = ['left', 'center', 'top', 'bottom', 'right'];
 
   function drawMoonDisc(cx, cy) {
-    const mp = moonPhaseFrac();
-    const illum = moonIllumination(mp);
-    const litCount = Math.round(illum * 5);
-    const order = mp < 0.5 ? MOON_WAX_ORDER : MOON_WANE_ORDER;
-    const litSet = new Set(order.slice(0, litCount));
+    // always a single pixel, regardless of phase
     ctx.fillStyle = MOON_LIT_COLOR;
-    for (const key of Object.keys(PLUS_OFFSETS)) {
-      if (!litSet.has(key)) continue;
-      const [ox, oy] = PLUS_OFFSETS[key];
-      ctx.fillRect(Math.round(cx) + ox, Math.round(cy) + oy, 1, 1);
-    }
+    ctx.fillRect(Math.round(cx), Math.round(cy), 1, 1);
   }
 
   // a total eclipse: the moon's dark disc sits dead center over the sun,
@@ -534,12 +620,14 @@
   // ---- block asset sheet (16x16px, 2x2 tiles) ----
   // row0 (y=0): grass, dirt, stone, log, leaves, coal ore, iron ore, copper ore
   // row1 (y=2): lava, water, wood planks, crafting table, cobblestone, furnace, clay, sand
-  // row2 (y=4): brick
+  // row2 (y=4): brick, tungsten ore
   // (fluid flow tiles live in their own separate sheet -- see below)
   const SKY = 0, GRASS = 1, DIRT = 2, STONE = 3, WOOD = 4, LEAF = 5,
         COAL_ORE = 6, IRON_ORE = 7, COPPER_ORE = 8,
         LAVA = 9, WATER = 10, WOOD_PLANKS = 11, CRAFTING_TABLE = 12,
         COBBLESTONE = 27, FURNACE = 28, CLAY = 29, SAND = 30, BRICK = 31,
+        TUNGSTEN_ORE = 32,
+        WEBBING = 33,
         LAVA_FLOW_DOWN = 13, LAVA_FLOW_R1 = 14, LAVA_FLOW_R2 = 15, LAVA_FLOW_R3 = 16,
         LAVA_FLOW_L1 = 17, LAVA_FLOW_L2 = 18, LAVA_FLOW_L3 = 19,
         WATER_FLOW_DOWN = 20, WATER_FLOW_R1 = 21, WATER_FLOW_R2 = 22, WATER_FLOW_R3 = 23,
@@ -549,7 +637,7 @@
     [COAL_ORE]: [10, 0], [IRON_ORE]: [12, 0], [COPPER_ORE]: [14, 0],
     [LAVA]: [0, 2], [WATER]: [2, 2], [WOOD_PLANKS]: [4, 2], [CRAFTING_TABLE]: [6, 2],
     [COBBLESTONE]: [8, 2], [FURNACE]: [10, 2], [CLAY]: [12, 2], [SAND]: [14, 2],
-    [BRICK]: [0, 4],
+    [BRICK]: [0, 4], [TUNGSTEN_ORE]: [2, 4], [WEBBING]: [4, 4],
   };
   // ---- fluid flow asset sheet (8x4px, 2x2 tiles; separate from the block
   // sheet so the two can be authored/updated independently) ----
@@ -569,15 +657,28 @@
   // ---- item asset sheet (16x16px, 2x2 tiles; not blocks, can't be placed) ----
   // row0 (y=0): stick, iron sword, copper sword, iron pickaxe, copper pickaxe, iron axe, copper axe, coal
   // row1 (y=2): copper, iron, stone sword, stone pickaxe, stone axe, empty bucket, lava bucket, water bucket
+  // row2 (y=4): tungsten, tungsten sword, tungsten pickaxe, tungsten axe
   const STICK = 100, IRON_SWORD = 101, COPPER_SWORD = 102, IRON_PICKAXE = 103, COPPER_PICKAXE = 104,
         IRON_AXE = 105, COPPER_AXE = 106, COAL = 107, COPPER = 108, IRON = 109,
         STONE_SWORD = 110, STONE_PICKAXE = 111, STONE_AXE = 112,
-        BUCKET_EMPTY = 113, BUCKET_LAVA = 114, BUCKET_WATER = 115;
+        BUCKET_EMPTY = 113, BUCKET_LAVA = 114, BUCKET_WATER = 115,
+        TUNGSTEN = 116, TUNGSTEN_SWORD = 117, TUNGSTEN_PICKAXE = 118, TUNGSTEN_AXE = 119,
+        COPPER_HELM = 120, COPPER_CHEST = 121, COPPER_LEGS = 122, COPPER_BOOTS = 123,
+        IRON_HELM = 124, IRON_CHEST = 125, IRON_LEGS = 126, IRON_BOOTS = 127,
+        TUNGSTEN_HELM = 128, TUNGSTEN_CHEST = 129, TUNGSTEN_LEGS = 130, TUNGSTEN_BOOTS = 131;
   const ITEM_SHEET_POS = {
     [STICK]: [0, 0], [IRON_SWORD]: [2, 0], [COPPER_SWORD]: [4, 0], [IRON_PICKAXE]: [6, 0],
     [COPPER_PICKAXE]: [8, 0], [IRON_AXE]: [10, 0], [COPPER_AXE]: [12, 0], [COAL]: [14, 0],
     [COPPER]: [0, 2], [IRON]: [2, 2], [STONE_SWORD]: [4, 2], [STONE_PICKAXE]: [6, 2],
     [STONE_AXE]: [8, 2], [BUCKET_EMPTY]: [10, 2], [BUCKET_LAVA]: [12, 2], [BUCKET_WATER]: [14, 2],
+    [TUNGSTEN]: [0, 4], [TUNGSTEN_SWORD]: [2, 4], [TUNGSTEN_PICKAXE]: [4, 4], [TUNGSTEN_AXE]: [6, 4],
+    // armor pieces have no dedicated art of their own -- each piece just reuses
+    // its metal's ingot texture (copper/iron/tungsten), per-piece identity is
+    // tracked purely through the item type / name / armor-slot restriction
+    [COPPER_HELM]: [0, 2], [COPPER_CHEST]: [0, 2],
+    [COPPER_LEGS]: [0, 2], [COPPER_BOOTS]: [0, 2],
+    [IRON_HELM]: [2, 2], [IRON_CHEST]: [2, 2], [IRON_LEGS]: [2, 2], [IRON_BOOTS]: [2, 2],
+    [TUNGSTEN_HELM]: [0, 4], [TUNGSTEN_CHEST]: [0, 4], [TUNGSTEN_LEGS]: [0, 4], [TUNGSTEN_BOOTS]: [0, 4],
   };
   const ITEM_NAMES = {
     [STICK]: 'stick', [IRON_SWORD]: 'iron sword', [COPPER_SWORD]: 'copper sword',
@@ -586,24 +687,47 @@
     [COPPER]: 'copper', [IRON]: 'iron', [STONE_SWORD]: 'stone sword',
     [STONE_PICKAXE]: 'stone pickaxe', [STONE_AXE]: 'stone axe',
     [BUCKET_EMPTY]: 'bucket', [BUCKET_LAVA]: 'lava bucket', [BUCKET_WATER]: 'water bucket',
+    [TUNGSTEN]: 'tungsten', [TUNGSTEN_SWORD]: 'tungsten sword',
+    [TUNGSTEN_PICKAXE]: 'tungsten pickaxe', [TUNGSTEN_AXE]: 'tungsten axe',
+    [COPPER_HELM]: 'copper helmet', [COPPER_CHEST]: 'copper chestplate',
+    [COPPER_LEGS]: 'copper leggings', [COPPER_BOOTS]: 'copper boots',
+    [IRON_HELM]: 'iron helmet', [IRON_CHEST]: 'iron chestplate',
+    [IRON_LEGS]: 'iron leggings', [IRON_BOOTS]: 'iron boots',
+    [TUNGSTEN_HELM]: 'tungsten helmet', [TUNGSTEN_CHEST]: 'tungsten chestplate',
+    [TUNGSTEN_LEGS]: 'tungsten leggings', [TUNGSTEN_BOOTS]: 'tungsten boots',
   };
   // ids that are items, not blocks: they live in the same inventory/hotbar/craft
   // slots as blocks, but can never be placed into the world
   const ITEMS = new Set(Object.keys(ITEM_SHEET_POS).map(Number));
   // tools and buckets only ever stack to 1 -- everything else uses STACK_MAX
   const TOOL_TYPES = new Set([
-    IRON_SWORD, COPPER_SWORD, STONE_SWORD,
-    IRON_PICKAXE, COPPER_PICKAXE, STONE_PICKAXE,
-    IRON_AXE, COPPER_AXE, STONE_AXE,
+    IRON_SWORD, COPPER_SWORD, STONE_SWORD, TUNGSTEN_SWORD,
+    IRON_PICKAXE, COPPER_PICKAXE, STONE_PICKAXE, TUNGSTEN_PICKAXE,
+    IRON_AXE, COPPER_AXE, STONE_AXE, TUNGSTEN_AXE,
   ]);
   const BUCKET_TYPES = new Set([BUCKET_EMPTY, BUCKET_LAVA, BUCKET_WATER]);
-  const SINGLE_STACK_TYPES = new Set([...TOOL_TYPES, ...BUCKET_TYPES]);
+  // every armor piece, regardless of metal -- all of these only ever stack to 1
+  const ARMOR_TYPES = new Set([
+    COPPER_HELM, COPPER_CHEST, COPPER_LEGS, COPPER_BOOTS,
+    IRON_HELM, IRON_CHEST, IRON_LEGS, IRON_BOOTS,
+    TUNGSTEN_HELM, TUNGSTEN_CHEST, TUNGSTEN_LEGS, TUNGSTEN_BOOTS,
+  ]);
+  const SINGLE_STACK_TYPES = new Set([...TOOL_TYPES, ...BUCKET_TYPES, ...ARMOR_TYPES]);
+  // which of the 4 armor-row slots (0 = helm, 1 = chest, 2 = legs, 3 = boots)
+  // a given armor piece is allowed to sit in
+  const ARMOR_TYPE_SLOT = {
+    [COPPER_HELM]: 0, [IRON_HELM]: 0, [TUNGSTEN_HELM]: 0,
+    [COPPER_CHEST]: 1, [IRON_CHEST]: 1, [TUNGSTEN_CHEST]: 1,
+    [COPPER_LEGS]: 2, [IRON_LEGS]: 2, [TUNGSTEN_LEGS]: 2,
+    [COPPER_BOOTS]: 3, [IRON_BOOTS]: 3, [TUNGSTEN_BOOTS]: 3,
+  };
 
   const NAMES = {
     [GRASS]: 'grass', [DIRT]: 'dirt', [STONE]: 'stone', [WOOD]: 'log', [LEAF]: 'leaves',
     [COAL_ORE]: 'coal ore', [IRON_ORE]: 'iron ore', [COPPER_ORE]: 'copper ore',
     [LAVA]: 'lava', [WATER]: 'water', [WOOD_PLANKS]: 'wood planks', [CRAFTING_TABLE]: 'crafting table',
     [COBBLESTONE]: 'cobblestone', [FURNACE]: 'furnace', [CLAY]: 'clay', [SAND]: 'sand', [BRICK]: 'brick',
+    [TUNGSTEN_ORE]: 'tungsten ore',
     ...ITEM_NAMES,
   };
   // fluids: not solid (you swim through them), not mineable, not a valid placement target
@@ -644,7 +768,7 @@
 
   const itemSheet = new Image();
   let itemSheetReady = false;
-  itemSheet.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAxklEQVR4nO3OIU7EUBjE8f8zmFZUYV4WQ2XzTC1Jk920CkEgweJIuEENGFwVkgsgK2u6WW6w4kNjKtZXPIUZBCEhwBH6M5PJmAHg7vxUAGYmgKktZGYahkFTW+jlevWnA4QQRF16Af+mmakuvaa20O89hCDvvdzUFjo5u+RtdUWe5yRJ4qqqEkCMkTRNiTHSdR3jONI0Dev7Da+POzYXx7jvO9nNMwBPD7ds9wdXl14fac5RfGe7P7i+75VlGfM88zMXi8WXT0NHX5FjjlDPAAAAAElFTkSuQmCC';
+  itemSheet.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAEKADAAQAAAABAAAAEAAAAAA0VXHyAAAA/0lEQVQ4EWNgYGD4n+mj/B9EX7x4EUw/rNABs7du3fofxF4aJovBB6nX09P7z+BqLA3WhI0GGQgSBxmCLg/SLC0t/Z8RJClnE8RwSTaYQUVFhYGbm5vB3t4eaAEDw5cvXxh4eHjAdFdXF8OuXbsY3NzcGJxqnRn2Ne9lcA4QY2AEOQ+kWCB+BohimFCXxrD77FOQyxh+8agwsH25A+avXbuWQUBAgOHDhw8oNOOszAP/efnFGCI7tBh6Yrcx8PFwMXz68g1Olyz2AhuMi2ABKf705QHYRpBikM2hZksZVp+KBtuMSyNMnBHIAHsBJkAqzUSqBnT1owYwMIyGAQMDACj7gTSOHFGwAAAAAElFTkSuQmCC';
   itemSheet.onload = () => {
     itemSheetReady = true;
     const tmp = document.createElement('canvas');
@@ -670,7 +794,7 @@
 
   const sheet = new Image();
   let sheetReady = false;
-  sheet.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAEKADAAQAAAABAAAAEAAAAAA0VXHyAAABF0lEQVQ4Ee2QMUvDQBTHfydXY6utKU6BIBkUSotL1Y8hiBn0O3R3dXYVFzdHpdDFXRAchDopCiJihihGUJMW2mhL4+Vw6OCSvX+49z/uvd+7xxOVxlIyM28gmm8YhsHAsMjlcnx/PlCey3NZewUJKzer+L6Pbdtsde9oFWs0qj7SvOjx1fmgXMor71NYGBHHMYI/KZgIDVuWpeFmocL2os/BrYVINklYA7F/rkKRq6NDhoMhp6028c+Ix55NGIaYpomUEtd1CYKAvd268nc1nIK5VkfBJF1ego7+ur6+TGl2mvbxs4bTJqk8z8NxHA1HUYg42agmaWLn7D61zJJPYT8zNA6ku9ITjD9muU9lKf6vdtIAJjuAX4HCXe7h3HUwAAAAAElFTkSuQmCC';
+  sheet.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAEKADAAQAAAABAAAAEAAAAAA0VXHyAAABMElEQVQ4Ee2QQUsCYRCGn421TUtb8SRUiLQgSh7c6hd0DSIP/YBO4b1r5w5doku3oEsh+BOCICiwi0aHWCIPlq1QrQq6pfj17eIPEM++8M7AMM/MMEqqsCrmFjWU4ieaptHX4gQCAX6/X4guBLnLfIAKa1UTy7IwDIPdzjOlcIZCuo6q33b5aX8RjQRl7hGKDXFdF4WRJEwLH04mkz5cDKXYW6lz+hRHETsI1kE5vpEhzMP5GYP+gOtSGfdviNVdwnEcdF1HVVXy+Ty2bXN0mJO5KY+TMI/SEkZ0eLfb/urchkFkfpbyxZsPNxoNv16r1UgkEj7cajlwtZ0Wnk3TFAfLJ8JTpVIRsnssq69Oz5+82dznPnZJtbpFNpv1a+ME71fepok1MzE5AqcDYPoD+AdkU3iPf2ZWswAAAABJRU5ErkJggg==';
 
   // fluid flow tiles (partial/tapered water & lava) live in their own small
   // sheet, kept separate from the block sheet so each can be updated on its own
@@ -691,6 +815,13 @@
   let breakSheetReady = false;
   breakSheet.onload = () => { breakSheetReady = true; };
   breakSheet.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAACCAYAAABllJ3tAAAAJ0lEQVR4nGNkQAIiIiL/GdAAE0xQRETk/5s3bxgZGBgYYDQDAwMDANBMCT8nHaCiAAAAAElFTkSuQmCC';
+
+  // giant spider body (2x2px, single frame -- legs are drawn procedurally,
+  // not part of the sprite) used for the deep spider-nest caves
+  const spiderSheet = new Image();
+  let spiderSheetReady = false;
+  spiderSheet.onload = () => { spiderSheetReady = true; };
+  spiderSheet.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAAqADAAQAAAABAAAAAgAAAADtGLyqAAAAGElEQVQIHWPcvtX4/6q9HxmYQESYMz8DAFbVB/q23HMnAAAAAElFTkSuQmCC';
 
   // average color of each block's top-row pixels (for the hotbar) —
   // sampled from the sheet at each block's own [x,y] position
@@ -727,14 +858,47 @@
     const d = tctx.getImageData(UI_BG_X, 0, 1, 1).data;
     UI_BG_COLOR = `rgb(${d[0]},${d[1]},${d[2]})`;
   };
-  uiSheet.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAQUlEQVR4nO3MsQ2AQBADweUL+x7ozzVADVfZkiCRAp/eSg49qFaVggeYxCQCrzYA5pycwM73tlv63Vg5N9BAA08Xf2IdXNaeBmQAAAAASUVORK5CYII=';
+  uiSheet.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAP0lEQVR4nGNkYGD4zwAl1jMwMLybM4eBgYGBISUlhYEYwARjrGdgYAgkSgsqYIS5gFzARFjJqAGjBowaQAwAAI/NCB3iSk8oAAAAAElFTkSuQmCC';
 
   // ---- crafting-UI open button (2x2px icon, drawn directly left of the exit
   // button on the main inventory screen) ----
   const craftBtnImg = new Image();
   let craftBtnReady = false;
   craftBtnImg.onload = () => { craftBtnReady = true; };
-  craftBtnImg.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAAqADAAQAAAABAAAAAgAAAADtGLyqAAAAGElEQVQIHWO0trb+LyAgwMAEIj58+MAAACU4BOQE/fWQAAAAAElFTkSuQmCC';
+  craftBtnImg.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAGklEQVR4nGOUkpL6z87OzsDEzs7O8PPnTwYAHVgEZrtU5HkAAAAASUVORK5CYII=';
+
+  // ---- furnace UI assets: a 4x8 sheet (four 4x2 frames stacked vertically,
+  // stage 1 at the top through stage 4 at the bottom) for the smelting
+  // progress bar, and a 2x2 icon for the oxygen button ----
+  // the sheet's black pixels are meant as transparency (letting the UI
+  // background show through the unfilled part of each frame), but canvas
+  // drawImage has no color-key transparency, so once it loads we bake a
+  // copy onto an offscreen canvas with every black pixel's alpha zeroed out,
+  // and draw from that copy everywhere instead of the raw image
+  const furnaceProgressImg = new Image();
+  let furnaceProgressReady = false;
+  let furnaceProgressCanvas = null;
+  furnaceProgressImg.onload = () => {
+    const w = furnaceProgressImg.naturalWidth, h = furnaceProgressImg.naturalHeight;
+    const tmp = document.createElement('canvas');
+    tmp.width = w; tmp.height = h;
+    const tctx = tmp.getContext('2d');
+    tctx.drawImage(furnaceProgressImg, 0, 0);
+    const imgData = tctx.getImageData(0, 0, w, h);
+    const d = imgData.data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i] === 0 && d[i + 1] === 0 && d[i + 2] === 0) d[i + 3] = 0; // black -> transparent
+    }
+    tctx.putImageData(imgData, 0, 0);
+    furnaceProgressCanvas = tmp;
+    furnaceProgressReady = true;
+  };
+  furnaceProgressImg.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAICAYAAADeM14FAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAABKADAAQAAAABAAAACAAAAAAAnBMDAAAAKElEQVQIHWMQFhb+z8DAAMdMQA4KAAsAVcEFsasAScNU4VYBU4WhAgA++gTvZWAZNwAAAABJRU5ErkJggg==';
+
+  const furnaceOxygenBtnImg = new Image();
+  let furnaceOxygenBtnReady = false;
+  furnaceOxygenBtnImg.onload = () => { furnaceOxygenBtnReady = true; };
+  furnaceOxygenBtnImg.src = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAAqADAAQAAAABAAAAAgAAAADtGLyqAAAAFklEQVQIHWM4d+7cfxBgBBHnz59nAACDrA3QD1e5KgAAAABJRU5ErkJggg==';
 
   // ---- deterministic hashing / value noise ----
   // Everything about world generation is a pure function of world
@@ -759,6 +923,21 @@
     const v0 = hash1(x0, seed), v1 = hash1(x1, seed);
     const s = t * t * (3 - 2 * t); // smoothstep
     return v0 + (v1 - v0) * s;
+  }
+
+  // same idea as noise1D, but bilinear across both axes using hash2's
+  // native 2D lattice -- used for cave carving below
+  function noise2D(x, y, seed, freq) {
+    const xf = x * freq, yf = y * freq;
+    const x0 = Math.floor(xf), x1 = x0 + 1;
+    const y0 = Math.floor(yf), y1 = y0 + 1;
+    const tx = xf - x0, ty = yf - y0;
+    const v00 = hash2(x0, y0, seed), v10 = hash2(x1, y0, seed);
+    const v01 = hash2(x0, y1, seed), v11 = hash2(x1, y1, seed);
+    const sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
+    const vx0 = v00 + (v10 - v00) * sx;
+    const vx1 = v01 + (v11 - v01) * sx;
+    return vx0 + (vx1 - vx0) * sy;
   }
 
   // ---- world gen: terrain height, per column, as a pure function of x ----
@@ -794,11 +973,33 @@
     return Math.max(0, Math.min(1, (m - (0.5 - COAST_BAND)) / (2 * COAST_BAND))); // 0 = dry land, 1 = open ocean
   }
   function oceanFloorRawAt(x) {
-    // gentle rolling seafloor -- shallower near shore, trench-like further
-    // out -- capped well inside WORLD_H so it never runs off the bottom
-    const rolling = noise1D(x, 7, 1 / 260);
-    return Math.min(WORLD_H - 3, SEA_LEVEL + 6 + rolling * 12); // 6-18 blocks below sea level
+    // the seafloor is built from two layered noise fields rather than one:
+    // a broad, slow "basin" field that sets the ordinary rolling depth most
+    // of the open ocean sits at, plus a much narrower "trench" field that
+    // only spikes rarely, carving occasional deep, sharp-sided trenches on
+    // top of that. The two combine (capped) into a floor that ranges from
+    // shallow shelves near shore up to 150 blocks below sea level in a trench.
+    const basin = noise1D(x, 7, 1 / 260); // broad rolling basins
+    const basinDepth = 8 + basin * 40; // 8-48 blocks below sea level, ordinarily
+    const trenchField = noise1D(x, 13, 1 / 70); // much narrower -- a tight, rare feature
+    const trench = Math.pow(Math.max(0, trenchField - 0.72) / 0.28, 2.5); // 0 almost everywhere; sharpens into a narrow spike where it does occur
+    const trenchDepth = trench * 110; // up to +110 more blocks carved into a trench
+    const depth = Math.min(150, basinDepth + trenchDepth); // hard floor at the max ocean depth
+    return Math.min(WORLD_H - 3, SEA_LEVEL + depth);
   }
+
+  // ---- spider nests: a rare, deep cave variant. A broad, slow-rolling
+  // field marks certain wide stretches of the map as "nest zones"; within
+  // one, only from SPIDER_NEST_MIN_DEPTH blocks down, a much bigger and
+  // more open cave network gets carved than an ordinary cave ever would,
+  // and its exposed stone walls get rimmed with webbing (see genLayerChunk
+  // for the actual carving -- these two helpers just answer "is this
+  // column in a nest zone" and "how deep does it have to be", so both the
+  // front-layer carving pass and the background-layer web-fleck pass, and
+  // spider spawning, all agree on the same footprint).
+  const SPIDER_NEST_MIN_DEPTH = 60;
+  function spiderZoneAt(x) { return noise1D(wrapX(x), 420, 1 / 500) > 0.92; } // rare -- roughly one pocket every several hundred blocks
+  function spiderNestTopAt(x) { return SURFACE_BASE + SPIDER_NEST_MIN_DEPTH; }
 
   function frontHeightAt(rawX) {
     const x = wrapX(rawX);
@@ -875,6 +1076,11 @@
   const CHUNK_W = 32;
   const chunkCache = new Map(); // key `${layerIdx}:${chunkIdx}` -> 2D array [WORLD_H][CHUNK_W]
 
+  // pebbles: purely decorative single-pixel ground clutter, kept as a sparse
+  // "layer,x,y" -> pixel-offset map entirely separate from the block grid so
+  // they never affect solid()/collision, scattered during genLayerChunk below
+  const pebbles = new Map();
+
   function genLayerChunk(chunkIdx, layerIdx) {
     const isBackground = layerIdx === 1;
     const heightFn = isBackground ? backHeightAt : frontHeightAt;
@@ -894,6 +1100,8 @@
       return r < clayChance ? CLAY : SAND;
     }
 
+    const surfs = new Array(CHUNK_W); // surface row per column, filled in below -- reused after tree/ore placement to scatter pebbles
+    const floodedCols = new Array(CHUNK_W);
     for (let lx = 0; lx < CHUNK_W; lx++) {
       const x = chunkStart + lx;
       const surf = heightFn(x);
@@ -906,6 +1114,8 @@
       const sandy = flooded || nearShore;
       const isOcean = oceanFactorAt(x) > 0;
       const bare = !sandy && surf <= GRASS_LINE_Y; // high mountain ground, just below the clouds and up -- bare rock, no grass
+      surfs[lx] = surf;
+      floodedCols[lx] = flooded;
       for (let y = 0; y < WORLD_H; y++) {
         if (flooded && y >= SEA_LEVEL && y < surf) grid[y][lx] = isBackground ? SKY : WATER;
         else if (y === surf) grid[y][lx] = bare ? STONE : (!sandy ? GRASS : (flooded ? bedTileAt(x, y, isOcean) : SAND));
@@ -960,8 +1170,147 @@
         if (rr < 0.025) grid[y][lx] = COAL_ORE;
         else if (rr < 0.04) grid[y][lx] = IRON_ORE;
         else if (rr < 0.05) grid[y][lx] = COPPER_ORE;
+        // tungsten only starts showing up well below the other ores -- roughly
+        // 70 blocks under the surface -- and is rarer than any of them
+        else if (y >= SURFACE_BASE + 70 && rr < 0.06) grid[y][lx] = TUNGSTEN_ORE;
       }
     }
+
+    // caves: ridged 2D noise carves winding tunnels through stone (and any
+    // ore embedded in it -- lava is left alone so carving never opens an
+    // air pocket straight into it) starting a few blocks below the surface
+    // and stopping short of the deepest, mostly-molten core. It's purely a
+    // block-grid edit (swapping to SKY), so lighting, fluids, and mining all
+    // just treat a cave like any other hollowed-out space -- no separate
+    // cave system needed. Front layer only -- the back layer stays solid.
+    if (layerIdx !== 1) {
+      const CAVE_SEED_A = 400;
+      const CAVE_SEED_B = 410;
+      function caveValueAt(x, y) {
+        // two octaves blended together, then "ridged" (folded around the
+        // noise's midpoint) so the result peaks in thin bands rather than
+        // broad blobs -- that's what gives caves their winding-tunnel shape
+        // instead of big open caverns
+        const a = noise2D(x, y, CAVE_SEED_A, 1 / 18);
+        const b = noise2D(x, y, CAVE_SEED_B, 1 / 9);
+        const n = a * 0.65 + b * 0.35;
+        return 1 - Math.abs(n * 2 - 1);
+      }
+      const CAVE_THRESHOLD = 0.90; // higher = sparser; lower = bigger, more open caverns (~23% of eligible stone at this value)
+      const CAVE_MIN_DEPTH_BELOW_SURFACE = 5;
+      const CAVE_MAX_Y = WORLD_H - 4; // stop short of the lava-dominated floor
+      for (let lx = 0; lx < CHUNK_W; lx++) {
+        const x = wrapX(chunkStart + lx);
+        const caveTop = surfs[lx] + CAVE_MIN_DEPTH_BELOW_SURFACE;
+        for (let y = caveTop; y < CAVE_MAX_Y; y++) {
+          const t = grid[y][lx];
+          if (t !== STONE && t !== COAL_ORE && t !== IRON_ORE && t !== COPPER_ORE && t !== TUNGSTEN_ORE) continue;
+          if (caveValueAt(x, y) > CAVE_THRESHOLD) grid[y][lx] = SKY;
+        }
+      }
+    }
+
+    // spider nests: within a rare "nest zone" (see spiderZoneAt above) and
+    // only once deep enough, a second, much coarser ridged-noise field
+    // carves a far bigger, more open network than an ordinary cave -- a
+    // handful of huge connected caverns rather than thin winding tunnels.
+    // Every stone/ore tile exposed along the outside of that network gets
+    // swapped for webbing, so the nest reads as rimmed/lined the moment you
+    // step into it. Tracked separately from the ordinary cave carving above
+    // so the outline pass only rims *this* network's walls, not every cave
+    // wall that happens to fall inside the zone.
+    if (layerIdx !== 1) {
+      const NEST_SEED_A = 430, NEST_SEED_B = 431;
+      function nestValueAt(x, y) {
+        const a = noise2D(x, y, NEST_SEED_A, 1 / 11);
+        const b = noise2D(x, y, NEST_SEED_B, 1 / 22);
+        const n = a * 0.5 + b * 0.5;
+        return 1 - Math.abs(n * 2 - 1);
+      }
+      const NEST_THRESHOLD = 0.62; // much lower than CAVE_THRESHOLD -- big, open caverns rather than thin tunnels
+      const NEST_MAX_Y = WORLD_H - 4;
+      const nestCarved = []; // [lx, y] pairs this pass turned to SKY, used below to rim the walls
+      for (let lx = 0; lx < CHUNK_W; lx++) {
+        const x = wrapX(chunkStart + lx);
+        if (!spiderZoneAt(x)) continue;
+        const nestTop = Math.max(surfs[lx] + SPIDER_NEST_MIN_DEPTH, spiderNestTopAt(x));
+        for (let y = nestTop; y < NEST_MAX_Y; y++) {
+          const t = grid[y][lx];
+          if (t !== STONE && t !== COAL_ORE && t !== IRON_ORE && t !== COPPER_ORE && t !== TUNGSTEN_ORE) continue;
+          if (nestValueAt(x, y) > NEST_THRESHOLD) {
+            grid[y][lx] = SKY;
+            nestCarved.push([lx, y]);
+          }
+        }
+      }
+      if (nestCarved.length) {
+        for (const [clx, cy] of nestCarved) {
+          const neighbors = [[clx - 1, cy], [clx + 1, cy], [clx, cy - 1], [clx, cy + 1]];
+          for (const [nlx, ny] of neighbors) {
+            if (nlx < 0 || nlx >= CHUNK_W || ny < 0 || ny >= WORLD_H) continue;
+            if (grid[ny][nlx] === STONE) grid[ny][nlx] = WEBBING;
+          }
+        }
+        // a nest chunk gets a real chance at a resident spider -- picked
+        // from an actual carved-open floor tile (solid directly beneath,
+        // open directly above) so it never spawns embedded in a wall
+        if (Math.random() < 0.35) {
+          const floorCandidates = nestCarved.filter(([clx, cy]) => {
+            const below = grid[cy + 1] && grid[cy + 1][clx];
+            return below !== undefined && below !== SKY && below !== undefined && solid(below);
+          });
+          if (floorCandidates.length) {
+            const [flx, fy] = floorCandidates[Math.floor(Math.random() * floorCandidates.length)];
+            spawnSpider(chunkStart + flx, fy);
+          }
+        }
+      }
+    }
+
+    // pebbles: small stone-texture flecks resting on open ground, purely
+    // decorative -- they live in a separate sparse map (see `pebbles` below)
+    // rather than the block grid itself, so they never participate in
+    // solid()/collision and can sit on the same tile as open air. Only
+    // placed where the tile directly above the surface is still empty sky
+    // (so a tree trunk or anything else generated above doesn't get one
+    // sitting inside it), the column isn't underwater, and it's the front
+    // layer -- the background layer never gets any.
+    const PEBBLE_CHANCE = 0.05;
+    if (!isBackground) {
+      for (let lx = 0; lx < CHUNK_W; lx++) {
+        if (floodedCols[lx]) continue;
+        const y = surfs[lx] - 1;
+        if (y < 0 || y >= WORLD_H || grid[y][lx] !== SKY) continue;
+        const x = wrapX(chunkStart + lx);
+        const r = hash2(x, y, 299);
+        if (r < PEBBLE_CHANCE) {
+          // which of the stone tile's two bottom-row pixels this pebble uses,
+          // picked with its own independent roll so it doesn't correlate with
+          // the placement roll above
+          const offset = hash2(x, y, 301) < 0.5 ? 0 : 1;
+          pebbles.set(`${layerIdx},${x},${y}`, offset);
+        }
+      }
+    }
+
+    // spider nests leave a hint one layer forward too: since the caves
+    // above are front-layer only, the background layer never actually
+    // hollows out -- instead, anywhere a nest pocket would exist at this
+    // depth, its stone gets sparse webbing flecks scattered directly into
+    // it, just enough texture to read as "something's back there".
+    const SPIDER_BG_WEB_CHANCE = 0.05;
+    if (isBackground) {
+      for (let lx = 0; lx < CHUNK_W; lx++) {
+        const x = wrapX(chunkStart + lx);
+        if (!spiderZoneAt(x)) continue;
+        const nestTop = Math.max(surfs[lx] + SPIDER_NEST_MIN_DEPTH, spiderNestTopAt(x));
+        for (let y = nestTop; y < WORLD_H; y++) {
+          if (grid[y][lx] !== STONE) continue;
+          if (hash2(x, y, 432) < SPIDER_BG_WEB_CHANCE) grid[y][lx] = WEBBING;
+        }
+      }
+    }
+
     return grid;
   }
 
@@ -1294,8 +1643,58 @@
   const player = {
     x: SPAWN_X, y: frontHeightAt(SPAWN_X) - 1, // block coords (float)
     vx: 0, vy: 0,
-    hp: 10,
+    hp: 16,
   };
+  const MAX_HP = 16;
+  // world spawn: the exact spot the player started at, used to respawn them
+  // (with everything they're carrying) if their hp ever hits 0
+  const WORLD_SPAWN_X = player.x, WORLD_SPAWN_Y = player.y;
+  // was the player standing on solid ground last frame, and how far below
+  // the point they last left the ground are they now -- used to charge fall
+  // damage only once they land, based on the total distance fallen
+  let wasOnGround = true;
+  let fallStartY = player.y;
+  const SAFE_FALL_BLOCKS = 3; // falls this short or shorter are free
+  // lava deals damage on a steady tick rather than every single frame
+  let lavaDamageMs = 0;
+  const LAVA_DAMAGE_INTERVAL_MS = 500;
+  // translucent red overlay shown briefly whenever the player takes damage
+  let damageFlashMs = 0;
+  const DAMAGE_FLASH_DURATION_MS = 150;
+
+  // oxygen: full breath drains only while the player's head is underwater,
+  // and refills (faster than it drains) any time it isn't. Once it hits
+  // zero, drowning damage kicks in on its own steady tick.
+  const OXYGEN_MAX_MS = 8000;
+  const OXYGEN_REFILL_RATE = 4; // refills this many times faster than it drains
+  let oxygenMs = OXYGEN_MAX_MS;
+  let playerUnderwater = false; // head-submerged, drives the oxygen bar's visibility
+  let drownDamageMs = 0;
+  const DROWN_DAMAGE_INTERVAL_MS = 1000;
+
+  function lavaAt(x, y) { return isLavaTile(blockAt(x, y)); }
+  function isWaterTile(t) { return t === WATER || (FLUID_META[t] && FLUID_META[t].fluid === 'water'); }
+  function waterAt(x, y) { return isWaterTile(blockAt(x, y)); }
+
+  // applies damage, flashes the screen red, and respawns the player (with
+  // their full inventory intact -- nothing is cleared) if hp drops to 0
+  function damagePlayer(amount) {
+    if (amount <= 0) return;
+    player.hp = Math.max(0, player.hp - amount);
+    damageFlashMs = DAMAGE_FLASH_DURATION_MS;
+    if (player.hp <= 0) {
+      player.x = WORLD_SPAWN_X;
+      player.y = WORLD_SPAWN_Y;
+      player.vx = 0; player.vy = 0;
+      player.hp = MAX_HP;
+      wasOnGround = true;
+      fallStartY = player.y;
+      lavaDamageMs = 0;
+      oxygenMs = OXYGEN_MAX_MS;
+      drownDamageMs = 0;
+      playerUnderwater = false;
+    }
+  }
 
   // ---- weather: discrete drifting clouds, no evaporation ----
   // Clouds are simple particle-clusters spawned at one edge of the
@@ -1869,6 +2268,30 @@
     return above === SKY;
   }
 
+  // true only when this open water surface has at least this many solid
+  // water blocks beneath it -- used to gate ocean waves onto genuinely deep
+  // water, so a shallow shelf or sandbar (which still reads as "open water
+  // surface" above) doesn't grow full-height swells just because it sits
+  // out past the shoreline. Lakes/ponds aren't gated by this at all (see
+  // isWaveSurface below), since they're already flattened by LAKE_MAX_WAVE_PX.
+  const WAVE_MIN_WATER_DEPTH = 5;
+  function hasWaterBelow(x, y, count) {
+    for (let d = 1; d <= count; d++) {
+      if (!isWaterTile(blockAtLayer(0, x, y + d))) return false;
+    }
+    return true;
+  }
+  // the surface tile waves are actually allowed to rise from: a real open
+  // water surface, and -- for ocean water specifically -- one with at least
+  // WAVE_MIN_WATER_DEPTH blocks of water beneath it. Shore shallows still get
+  // their existing depth-based fade via maxWaveHeightAt/oceanMaxWaveHeightAt;
+  // this just adds a hard floor so waves never appear on a thin shelf.
+  function isWaveSurface(x, y) {
+    if (!isOpenWaterSurface(x, y)) return false;
+    if (oceanFactorAt(x) <= 0) return true; // lakes/ponds: no depth gate
+    return hasWaterBelow(x, y, WAVE_MIN_WATER_DEPTH);
+  }
+
   // ---- water surface waves --------------------------------------------
   // Wave height is a pure function of how deep the water is at that column
   // (see oceanDepthAt below) -- a shallow pond naturally comes out flat and
@@ -1970,7 +2393,7 @@
     const tSec = performance.now() / 1000;
     const h = currentWaveHeightAt(x, tSec);
     for (let d = 1; d <= cap; d++) {
-      if (!isOpenWaterSurface(x, y + d)) continue;
+      if (!isWaveSurface(x, y + d)) continue;
       const neededPx = (d - 1) * BLOCK + 1; // how tall the crest must currently be to reach into block d
       if (h >= neededPx) return true;
     }
@@ -1994,7 +2417,7 @@
     for (let ry = 0; ry < ROWS; ry++) {
       for (let rx = 0; rx < COLS; rx++) {
         const worldX = camX + rx, worldY = camY + ry;
-        if (!isOpenWaterSurface(worldX, worldY)) continue;
+        if (!isWaveSurface(worldX, worldY)) continue;
         const maxH = maxWaveHeightAt(worldX);
         if (maxH <= 0) continue; // calm water: little to no ripple at all
         const dx = rx * BLOCK, dy = ry * BLOCK;
@@ -2135,7 +2558,7 @@
         // underneath, so it reads as striking the wave itself. This is
         // ocean-specific -- lakes/ponds keep the flat stop, since their
         // ripple is a much smaller cosmetic wobble, not a real swell.
-        if (oceanFactorAt(cx) > 0.02) {
+        if (oceanFactorAt(cx) > 0.02 && isWaveSurface(cx, row)) {
           const waveH = currentWaveHeightAt(cx, tSec); // raw canvas px
           surfaceY -= waveH / BLOCK;
         }
@@ -2266,7 +2689,7 @@
   const Q_DROP_WINDOW_MS = 600;
   let qDropCount = 0, qDropTime = 0;
   function dropHeldItem() {
-    if (invOpen || craftOpen || tableCraftOpen) return; // only out in the world
+    if (invOpen || craftOpen || tableCraftOpen || furnaceOpen) return; // only out in the world
     const held = hotbarSlots[selectedIndex];
     if (!held) return;
     const pos = cursorWorldPos();
@@ -2300,6 +2723,9 @@
   bindHold(document.getElementById('btnLeft'), 'a');
   bindHold(document.getElementById('btnRight'), 'd');
   bindHold(document.getElementById('btnJump'), ' ');
+  // ---- item name strip (mobile): same as holding I -- shows the name of
+  // whatever's currently selected for as long as it's held down ----
+  bindHold(document.getElementById('btnInfo'), 'i');
 
   // ---- cursor d-pad (mobile): moves the white pixel reticle. Tapping moves
   // it one step; holding down repeats, mirroring how a held arrow key auto-repeats ----
@@ -2377,6 +2803,9 @@
 
   const hotbarSlots = new Array(HOTBAR_SIZE).fill(null);
   const inventorySlots = new Array(INV_SIZE).fill(null);
+  // the 4 equip slots shown along the top of the inventory screen: index 0 =
+  // helm, 1 = chest, 2 = legs, 3 = boots (matches ARMOR_TYPE_SLOT above)
+  const armorSlots = new Array(4).fill(null);
   // crafting screen's 2x2 input grid; the output has its own single virtual
   // "slot" (not part of the regular inventory) that only ever holds whatever
   // was most recently crafted and picked up, until it's placed elsewhere
@@ -2389,6 +2818,120 @@
   const TABLE_CRAFT_SIZE = 9;
   const tableCraftSlots = new Array(TABLE_CRAFT_SIZE).fill(null);
   const tableOutputVirtual = [null];
+
+  // ---- furnace UI: opened by interacting with a placed FURNACE block out in
+  // the world, same single-global-state idea as the crafting screens above.
+  // Three single-item "slots" (fuel in, item to smelt in, result out) plus a
+  // heat/fuel simulation that keeps running every frame whether or not the
+  // furnace screen is actually open (see updateFurnace), like a real furnace
+  // that keeps burning while you walk away ----
+  const furnaceFuelSlot = [null];
+  const furnaceItemSlot = [null];
+  const furnaceOutputSlot = [null];
+
+  // how many "units" of burn time each fuel item is worth
+  const FUEL_UNITS = { [WOOD]: 4, [COAL]: 8 };
+
+  // what each smeltable item needs: the heat level required to make any
+  // progress at all, how long (ms) a full smelt takes at that heat, and what
+  // it turns into
+  const SMELT_RECIPES = {
+    [CLAY]: { heat: 1, timeMs: 1000, outputType: BRICK },
+    [COBBLESTONE]: { heat: 1, timeMs: 1000, outputType: STONE },
+    [COPPER_ORE]: { heat: 3, timeMs: 5000, outputType: COPPER },
+    [IRON_ORE]: { heat: 5, timeMs: 10000, outputType: IRON },
+    [TUNGSTEN_ORE]: { heat: 7, timeMs: 10000, outputType: TUNGSTEN },
+  };
+
+  const HEAT_MAX = 10;           // top of the heat bar / oxygen button's ceiling
+  const HEAT_IDLE_FLOOR = 1;     // heat drifts down to (but not below) this while fuel is still burning
+  const HEAT_IDLE_DECAY_PER_SEC = 1 / 4;   // "slowly" -- 4 seconds per level, down to the idle floor
+  const HEAT_NOFUEL_DECAY_PER_SEC = 1;     // once fuel is fully gone: a full level per second, down to 0
+  const OXYGEN_BOOST = 1;        // heat gained per tap of the oxygen button
+  const OXYGEN_BTN_FLIP_MS = 400; // how often the oxygen button icon mirrors left/right
+  // fuel burns faster the hotter the fire is: this many units/sec per level of heat
+  const FUEL_UNITS_PER_SEC_PER_HEAT = 0.15;
+  const SMELT_GRACE_MS = 2000;   // grace period after heat drops below what's needed before progress starts undoing
+  const SMELT_REGRESS_STAGE_MS = 2000; // one stage (1/4 of the total smelt time) lost per this many ms once regressing
+
+  const furnace = {
+    heat: 0,
+    fuelType: null,       // WOOD/COAL currently burning, or null if the firebox is empty
+    fuelUnitsLeft: 0,      // remaining burn-units of the current fuel item
+    progressMs: 0,         // smelting progress on whatever's in furnaceItemSlot
+    belowMs: 0,            // how long heat has continuously been under the current recipe's requirement
+  };
+
+  // advances the furnace's fuel/heat/smelting simulation by dt milliseconds.
+  // Called every frame regardless of which screen is open, so the furnace
+  // keeps working while the player is off doing something else.
+  function updateFurnace(dt) {
+    // pull the next fuel item out of the fuel slot once the current one is spent
+    if (furnace.fuelUnitsLeft <= 0) {
+      const stack = furnaceFuelSlot[0];
+      if (stack && FUEL_UNITS[stack.type]) {
+        furnace.fuelType = stack.type;
+        furnace.fuelUnitsLeft = FUEL_UNITS[stack.type];
+        stack.count--;
+        furnaceFuelSlot[0] = stack.count > 0 ? stack : null;
+      } else {
+        furnace.fuelType = null;
+      }
+    }
+    const hasFuel = furnace.fuelUnitsLeft > 0;
+
+    // heat: drifts down toward the idle floor while fuel is burning (adding
+    // oxygen fights this and pushes it up instead); once fuel is completely
+    // gone it drifts all the way down to zero and oxygen no longer helps
+    if (hasFuel) {
+      if (furnace.heat > HEAT_IDLE_FLOOR) {
+        furnace.heat = Math.max(HEAT_IDLE_FLOOR, furnace.heat - HEAT_IDLE_DECAY_PER_SEC * dt / 1000);
+      }
+      // more heat = more fuel consumption
+      furnace.fuelUnitsLeft = Math.max(0, furnace.fuelUnitsLeft - FUEL_UNITS_PER_SEC_PER_HEAT * furnace.heat * dt / 1000);
+    } else {
+      furnace.heat = Math.max(0, furnace.heat - HEAT_NOFUEL_DECAY_PER_SEC * dt / 1000);
+    }
+
+    // smelting progress on whatever's in the item slot
+    const inputStack = furnaceItemSlot[0];
+    const recipe = inputStack ? SMELT_RECIPES[inputStack.type] : null;
+    const outStack = furnaceOutputSlot[0];
+    const roomForOutput = recipe && (!outStack || (outStack.type === recipe.outputType && outStack.count < stackMaxFor(recipe.outputType)));
+
+    if (recipe && roomForOutput) {
+      const heatOk = furnace.heat >= recipe.heat;
+      if (heatOk) {
+        furnace.belowMs = 0;
+        furnace.progressMs = Math.min(recipe.timeMs, furnace.progressMs + dt);
+        if (furnace.progressMs >= recipe.timeMs) {
+          inputStack.count--;
+          furnaceItemSlot[0] = inputStack.count > 0 ? inputStack : null;
+          furnaceOutputSlot[0] = outStack
+            ? { type: outStack.type, count: outStack.count + 1 }
+            : { type: recipe.outputType, count: 1 };
+          furnace.progressMs = 0;
+        }
+      } else if (furnace.progressMs > 0) {
+        furnace.belowMs += dt;
+        if (furnace.belowMs > SMELT_GRACE_MS) {
+          furnace.progressMs = Math.max(0, furnace.progressMs - (recipe.timeMs / 4) * dt / SMELT_REGRESS_STAGE_MS);
+        }
+      }
+    } else if (!recipe) {
+      // nothing smeltable in the slot (or output's full/incompatible): no progress to track
+      furnace.progressMs = 0;
+      furnace.belowMs = 0;
+    }
+  }
+
+  // tapping the oxygen button: pumps the fire hotter, but only while there's
+  // actually fuel burning -- with no fuel and none queued, blowing air on
+  // dead coals does nothing
+  function pressOxygenButton() {
+    if (furnace.fuelUnitsLeft <= 0) return;
+    furnace.heat = Math.min(HEAT_MAX, furnace.heat + OXYGEN_BOOST);
+  }
 
   // starter kit so there's something to build with / demo the UI
   hotbarSlots[0] = { type: GRASS, count: 5 };
@@ -2432,6 +2975,88 @@
     document.getElementById('selName').textContent = s ? `${NAMES[s.type]} x${s.count}` : 'empty';
     document.getElementById('layerName').textContent = activeLayer === 0 ? 'front' : 'background';
     updateHotbarSelectButtons();
+  }
+
+  // ---- item name strip: whatever's "selected" right now, in whichever
+  // screen is showing. Out in the world (no UI open) that's just the
+  // active hotbar slot. Inside any inventory-style screen (backpack,
+  // crafting table, furnace) it's whatever the player has picked up, if
+  // anything is held (invSelection, the same shared "held stack" concept
+  // all of those screens already use) -- and otherwise falls back to
+  // whatever slot the cursor is currently hovering over, so just aiming
+  // the cursor at an item and holding I shows its name without needing to
+  // pick it up first.
+  function currentSelectedStackForStrip() {
+    if (invOpen || craftOpen || tableCraftOpen || furnaceOpen) {
+      if (invSelection) return getSlot(invSelection.group, invSelection.index);
+      return hoveredSlotStack();
+    }
+    return hotbarSlots[selectedIndex];
+  }
+
+  // maps the cursor's current canvas position to whatever inventory-style
+  // slot it's sitting over, using each screen's own hit-tester -- returns
+  // null over decorative regions (background, exit button, etc.)
+  const STRIP_HOVER_REGIONS = new Set([
+    'armor', 'inv', 'hotbar', 'craft', 'output',
+    'tableCraft', 'tableOutput', 'furnaceFuel', 'furnaceItem', 'furnaceOutput',
+  ]);
+  function hoveredSlotStack() {
+    let hit = null;
+    if (invOpen) hit = hitTestInventory(cursor.x, cursor.y);
+    else if (craftOpen) hit = hitTestCraftingUI(cursor.x, cursor.y);
+    else if (tableCraftOpen) hit = hitTestTableCraftingUI(cursor.x, cursor.y);
+    else if (furnaceOpen) hit = hitTestFurnaceUI(cursor.x, cursor.y);
+    if (!hit || !STRIP_HOVER_REGIONS.has(hit.region)) return null;
+    return getSlot(hit.region, hit.index || 0);
+  }
+
+  // ---- item name strip rendering: a black bar drawn straight onto the
+  // game canvas (7 of its 16 native pixels tall, vertically centered),
+  // with the item's name scrolled across it in the tiny pixel font above --
+  // real blocky canvas pixels, matching the rest of the game's art, rather
+  // than HTML text floating on top of it.
+  const STRIP_H = 7;
+  const STRIP_Y = Math.floor((VIEW - STRIP_H) / 2);
+  const STRIP_TEXT_Y = STRIP_Y + Math.floor((STRIP_H - GLYPH_H) / 2);
+
+  let itemStripVisible = false;
+  let itemStripLabel = null;
+  let itemStripScrollX = VIEW;
+  let itemStripSpeed = 0; // canvas px per ms, recomputed whenever the label changes
+
+  function updateItemStrip() {
+    const stack = (!menuOpen && keys['i']) ? currentSelectedStackForStrip() : null;
+    if (!stack) {
+      itemStripVisible = false;
+      itemStripLabel = null;
+      return;
+    }
+    const label = `${NAMES[stack.type]} x${stack.count}`.toUpperCase();
+    if (!itemStripVisible || label !== itemStripLabel) {
+      // restart the scroll from the right edge every time the label
+      // changes (new item selected, or its count ticked over), and scale
+      // the scroll speed to the label's length so short and long names
+      // both cross the screen at roughly the same, slow, readable pace
+      itemStripLabel = label;
+      itemStripVisible = true;
+      itemStripScrollX = VIEW;
+      const distance = VIEW + pixelTextWidth(label);
+      const durationMs = Math.max(3500, label.length * 350);
+      itemStripSpeed = distance / durationMs;
+    } else {
+      itemStripScrollX -= itemStripSpeed * frameDt;
+      if (itemStripScrollX < -pixelTextWidth(label)) itemStripScrollX = VIEW;
+    }
+  }
+
+  // draws the strip (if visible) on top of whatever the current screen just
+  // rendered -- called once per frame after the active screen's own draw
+  function drawItemStrip() {
+    if (!itemStripVisible || !itemStripLabel) return;
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, STRIP_Y, VIEW, STRIP_H);
+    drawPixelText(itemStripLabel, itemStripScrollX, STRIP_TEXT_Y, '#ffffff');
   }
 
   // find a slot (hotbar checked first, then backpack) with room in its stack
@@ -2485,6 +3110,28 @@
   const DROP_GRAV = 0.05; // faster-settling than the player's own gravity -- a light little hop down
   const DROP_MAX_FALL = 0.5;
   const avgColorCache = {};
+
+  // samples the stone tile's two bottom-row pixels once the sheet's loaded,
+  // so pebbles can be drawn as a single flecked pixel without needing their
+  // own sprite -- offset 0 is the bottom-left pixel, 1 is bottom-right
+  let pebblePixelColors = null;
+  function pebbleColorFor(offset) {
+    if (!pebblePixelColors) {
+      if (!sheetReady) return '#8a8a8a'; // fallback until the sheet decodes; not cached, so it self-corrects next frame
+      const [sx, sy] = SHEET_POS[STONE];
+      const tmp = document.createElement('canvas');
+      tmp.width = BLOCK; tmp.height = BLOCK;
+      const tctx = tmp.getContext('2d');
+      tctx.drawImage(sheet, sx, sy, BLOCK, BLOCK, 0, 0, BLOCK, BLOCK);
+      const data = tctx.getImageData(0, 0, BLOCK, BLOCK).data;
+      const colorAt = (px, py) => {
+        const i = (py * BLOCK + px) * 4;
+        return `rgb(${data[i]},${data[i + 1]},${data[i + 2]})`;
+      };
+      pebblePixelColors = [colorAt(0, BLOCK - 1), colorAt(BLOCK - 1, BLOCK - 1)];
+    }
+    return pebblePixelColors[offset];
+  }
 
   function averageColorFor(type) {
     if (avgColorCache[type]) return avgColorCache[type];
@@ -2544,6 +3191,440 @@
       if (d.count <= 0) itemDrops.splice(i, 1);
     }
   }
+
+  // ---- spiders: giant, deep-nest-dwelling mobs. Purely a wandering
+  // presence for now (no aggro/combat yet) -- ported from the spider
+  // playground prototype, so behavior/rendering matches that reference
+  // exactly, just re-hosted on this game's real tile grid instead of a
+  // fixed terrain array.
+  //
+  // A spider is in one of three modes:
+  //   'walk'  -- normal ground gait
+  //   'fall'  -- committed to a jump-down over a big drop, free-falling
+  //              under gravity until it lands
+  //   'climb' -- committed to scaling a wall, moving straight up it
+  //
+  // CORE MOVEMENT MODEL:
+  // The BODY is an invisible box that is positioned *directly* from the
+  // terrain/wall every frame -- it never rotates, and it never blends or
+  // tweens between ground/wall stances.
+  //
+  // The LEGS attach to the nearest ground/wall block, but every leg's foot
+  // is tracked as a real 2D pixel position (not an abstract "along the gait
+  // axis" number) and is hard-clamped, EVERY frame, for EVERY leg, whether
+  // idle or mid-step, to within LEG_MAX_REACH_PX of its own attach point.
+  // This clamp is applied last, after everything else, using the attach
+  // point as it is *this instant* -- so it holds regardless of body
+  // movement, mode switches, or lag, with no code path that skips it.
+  const spiders = [];
+  const SPIDER_SPEED = 0.0007;          // blocks/ms -- top walking speed
+  const SPIDER_ACCEL = 0.0000045;       // blocks/ms^2 -- how fast it can change speed
+  const SPIDER_CLIMB_SPEED = 0.0006;    // blocks/ms -- speed climbing a wall
+  const SPIDER_GRAVITY = 0.000014;      // blocks/ms^2 -- fall acceleration
+  const SPIDER_JUMP_VY = -0.0052;       // blocks/ms -- upward kick given when it commits to a drop
+  const SPIDER_BODY_GROUND_GAP = 3;     // px of clearance above the ground while walking
+  const SPIDER_BODY_WALL_GAP = 3;       // px of clearance out from the wall while climbing
+  const SPIDER_LEG_OFFSETS = [-0.6, 0, 0.6]; // block offsets across body length, along whichever axis is the current gait axis
+  const SPIDER_MAX_STEP = 1;   // max blocks of height change walked over as a normal stair-step
+  const SPIDER_MAX_FALL = 5;   // max blocks it's willing to jump/fall down
+  const SPIDER_MAX_CLIMB = 8;  // max blocks of wall it's willing to climb before giving up
+  const LEG_MAX_REACH_PX = 4;           // px -- ABSOLUTE hard cap: a leg may only ever attach to a block within this radius of its attach point. Enforced every frame, unconditionally.
+  const LEG_STEP_THRESHOLD_PX = 2.2;    // px -- how far the ideal foot must drift from the current foot before it replants
+  const LEG_STRIDE_AHEAD_PX = 1.6;      // px -- how far ahead of attach a leg likes to plant, in the direction of travel
+  const LEG_STEP_DURATION_MS = 200;
+  const LEG_LIFT_PX = 1;                // px -- how high a stepping foot arcs up mid-step
+  const JUMP_LEG_LEN = 3;               // px -- straight leg length while airborne (fall/jump)
+  const SQUASH_MAX_PX = 2;              // px -- how much legs compress on the hardest landings
+  const SQUASH_RECOVER_MS = 260;        // ms -- how long the squash takes to spring back out
+  // How fast the rendered body position slides toward wherever the terrain
+  // says it should be. Plain linear glide (translate only, never a
+  // rotation) so a mode switch (walk<->climb<->fall) can't teleport the
+  // body a pixel or two in one frame.
+  const BODY_FOLLOW_RATE = 0.025; // per ms
+
+  // Real tile grid replaces the playground's fixed terrain array: find the
+  // topmost solid, exposed-from-above row in a column, searching outward
+  // from a known nearby row (the spider's own last known row) rather than
+  // scanning the whole world height every call. Falls back to nearRow if
+  // nothing solid/exposed turns up within range (open shaft, etc.).
+  function findSurfaceRow(col, nearRow) {
+    const range = SPIDER_MAX_CLIMB + SPIDER_MAX_FALL + 4;
+    for (let dy = 0; dy <= range; dy++) {
+      const up = Math.round(nearRow) - dy;
+      if (up >= 0 && solidAt(col, up) && !solidAt(col, up - 1)) return up;
+      const down = Math.round(nearRow) + dy;
+      if (down < WORLD_H && solidAt(col, down) && !solidAt(col, down - 1)) return down;
+    }
+    return nearRow;
+  }
+
+  // ground-surface row at a fractional world-x, linearly interpolated
+  // between its two neighboring columns (so a small step reads as a smooth
+  // little climb/descent) -- same role as the playground's groundRowAt,
+  // just backed by findSurfaceRow instead of a precomputed array.
+  function groundRowAt(xBlocks, nearRow) {
+    const c0 = Math.floor(xBlocks), c1 = c0 + 1;
+    const frac = xBlocks - c0;
+    const r0 = findSurfaceRow(c0, nearRow), r1 = findSurfaceRow(c1, nearRow);
+    return r0 + (r1 - r0) * frac;
+  }
+
+  function makeSpiderLegs(attachX, attachY) {
+    return SPIDER_LEG_OFFSETS.map(offset => ({
+      offset,
+      // start each foot straight down/out at max reach from its attach point
+      // -- the very first frame's hard clamp (see clampFootToReach) would
+      // enforce this anyway, so this is just a sane starting guess.
+      footPx: { x: attachX + offset * BLOCK, y: attachY + LEG_MAX_REACH_PX },
+      stepping: false,
+      stepT: 0,
+      fromPx: { x: 0, y: 0 },
+      toPx: { x: 0, y: 0 },
+    }));
+  }
+
+  function spawnSpider(x, footRow) {
+    const bodyY = footRow * BLOCK - SPIDER_BODY_GROUND_GAP;
+    spiders.push({
+      x, vel: 0, dir: Math.random() < 0.5 ? -1 : 1, pauseMs: 0,
+      legs: makeSpiderLegs(x * BLOCK, bodyY),
+      legTurn: 0,
+      mode: 'walk',
+      row: footRow, vy: 0,
+      pendingEdge: null, pendingCol: 0, pendingCurCol: 0,
+      wallX: 0, climbTargetRow: 0, climbTargetCol: 0, climbDirAtStart: 1,
+      fallStartRow: 0, squash: 0, squashT: 0, noClimbMs: 0,
+      // rendered body position, in *world* px (world blocks * BLOCK) --
+      // camera offset is only applied at draw time. See BODY_FOLLOW_RATE.
+      bodyPx: { x: x * BLOCK, y: bodyY },
+    });
+  }
+
+  // Where the body box *should* be this instant, given the current mode --
+  // pure function of terrain/wall + physics state, straight translation,
+  // never a rotation. drawn position eases toward this rather than
+  // snapping to it.
+  function idealSpiderBodyPx(s) {
+    if (s.mode === 'climb') {
+      return {
+        x: s.wallX * BLOCK - s.climbDirAtStart * SPIDER_BODY_WALL_GAP,
+        y: s.row * BLOCK,
+      };
+    }
+    if (s.mode === 'fall') {
+      return { x: s.x * BLOCK, y: s.row * BLOCK - SPIDER_BODY_GROUND_GAP };
+    }
+    // walk
+    return {
+      x: s.x * BLOCK,
+      y: groundRowAt(s.x, s.row) * BLOCK - SPIDER_BODY_GROUND_GAP + s.squash * SQUASH_MAX_PX,
+    };
+  }
+
+  function updateSpiderBodyPx(s, dt) {
+    const ideal = idealSpiderBodyPx(s);
+    const a = 1 - Math.exp(-dt * BODY_FOLLOW_RATE);
+    s.bodyPx.x += (ideal.x - s.bodyPx.x) * a;
+    s.bodyPx.y += (ideal.y - s.bodyPx.y) * a;
+  }
+
+  // Pull point p back toward attach 'a' if it's farther than maxPix away,
+  // along the a->p line -- used both as the ideal-foot target clamp and as
+  // the final unconditional per-frame safety clamp below.
+  function clampFootToReach(ax, ay, px, py, maxPix) {
+    const dx = px - ax, dy = py - ay;
+    const dist = Math.hypot(dx, dy);
+    if (dist <= maxPix || dist === 0) return { x: px, y: py };
+    const scale = maxPix / dist;
+    return { x: ax + dx * scale, y: ay + dy * scale };
+  }
+
+  // Shared gait logic for a set of legs given, per-leg, an attach point and
+  // an (unclamped) ideal target the foot would like to plant on. Only the
+  // leg whose turn it is may begin a new step, in round-robin order.
+  // Regardless of any of that, EVERY leg's foot position is hard-clamped
+  // to LEG_MAX_REACH_PX of its OWN attach point at the very end, every
+  // single frame -- never skipped, for any reason.
+  function updateSpiderLegSet(s, computeAttach, computeIdeal, dt) {
+    const legs = s.legs;
+
+    for (let i = 0; i < legs.length; i++) {
+      const leg = legs[i];
+      if (!leg.stepping) continue;
+      leg.stepT = Math.min(1, leg.stepT + dt / LEG_STEP_DURATION_MS);
+      const eased = leg.stepT < 0.5 ? 2 * leg.stepT * leg.stepT : 1 - Math.pow(-2 * leg.stepT + 2, 2) / 2;
+      const lift = Math.sin(Math.min(1, leg.stepT) * Math.PI) * LEG_LIFT_PX;
+      leg.footPx.x = leg.fromPx.x + (leg.toPx.x - leg.fromPx.x) * eased;
+      leg.footPx.y = leg.fromPx.y + (leg.toPx.y - leg.fromPx.y) * eased - lift;
+      if (leg.stepT >= 1) {
+        leg.footPx.x = leg.toPx.x;
+        leg.footPx.y = leg.toPx.y;
+        leg.stepping = false;
+        s.legTurn = (i + 1) % legs.length;
+      }
+    }
+
+    const anyStepping = legs.some(l => l.stepping);
+    if (!anyStepping) {
+      const i = s.legTurn;
+      const leg = legs[i];
+      const attach = computeAttach(i);
+      const rawIdeal = computeIdeal(i);
+      const ideal = clampFootToReach(attach.x, attach.y, rawIdeal.x, rawIdeal.y, LEG_MAX_REACH_PX);
+      const dist = Math.hypot(leg.footPx.x - ideal.x, leg.footPx.y - ideal.y);
+      if (dist > LEG_STEP_THRESHOLD_PX) {
+        leg.stepping = true;
+        leg.stepT = 0;
+        leg.fromPx.x = leg.footPx.x; leg.fromPx.y = leg.footPx.y;
+        leg.toPx.x = ideal.x; leg.toPx.y = ideal.y;
+      }
+    }
+
+    // The unconditional invariant: no matter what happened above, no foot
+    // may ever end this frame farther than LEG_MAX_REACH_PX from its own
+    // attach point right now.
+    for (let i = 0; i < legs.length; i++) {
+      const leg = legs[i];
+      const attach = computeAttach(i);
+      const clamped = clampFootToReach(attach.x, attach.y, leg.footPx.x, leg.footPx.y, LEG_MAX_REACH_PX);
+      leg.footPx.x = clamped.x;
+      leg.footPx.y = clamped.y;
+    }
+  }
+
+  function updateWalkingSpider(s, dt) {
+    if (s.squash > 0) {
+      s.squashT += dt;
+      s.squash = Math.max(0, s.squash * (1 - dt / SQUASH_RECOVER_MS));
+      if (s.squashT > SQUASH_RECOVER_MS) s.squash = 0;
+    }
+
+    let targetVel = s.dir * SPIDER_SPEED;
+    s.pendingEdge = null;
+    if (s.noClimbMs > 0) s.noClimbMs -= dt;
+
+    if (s.pauseMs > 0) {
+      s.pauseMs -= dt;
+      targetVel = 0;
+    } else {
+      const curCol = Math.round(s.x);
+      const nextCol = curCol + s.dir;
+      const curRow = findSurfaceRow(curCol, s.row);
+      const nextRow = findSurfaceRow(nextCol, s.row);
+      const diff = nextRow - curRow; // + = drop ahead, - = rise ahead
+      const climbable = diff < -SPIDER_MAX_STEP && -diff <= SPIDER_MAX_CLIMB;
+      if (diff > SPIDER_MAX_STEP && diff <= SPIDER_MAX_FALL) {
+        s.pendingEdge = 'fall'; s.pendingCol = nextCol; s.pendingCurCol = curCol;
+      } else if (climbable && s.noClimbMs <= 0) {
+        s.pendingEdge = 'climb'; s.pendingCol = nextCol; s.pendingCurCol = curCol;
+      } else if (climbable || Math.abs(diff) > SPIDER_MAX_STEP) {
+        targetVel = 0;
+        // Hard position clamp: even before velocity has fully decayed to 0,
+        // never let the walking spider's *position* cross the boundary into
+        // a block it can't fall down or climb.
+        const edgeX = curCol + s.dir * 0.5;
+        if (s.dir > 0) s.x = Math.min(s.x, edgeX);
+        else s.x = Math.max(s.x, edgeX);
+        if (Math.abs(s.vel) < SPIDER_ACCEL * dt * 2) { s.dir *= -1; s.pauseMs = 150 + Math.random() * 250; }
+      } else if (Math.random() < 0.0003 * dt) {
+        s.pauseMs = 250 + Math.random() * 600;
+      }
+    }
+
+    const maxDelta = SPIDER_ACCEL * dt;
+    const diffV = targetVel - s.vel;
+    if (Math.abs(diffV) <= maxDelta) s.vel = targetVel;
+    else s.vel += Math.sign(diffV) * maxDelta;
+
+    const prevX = s.x;
+    s.x += s.vel * dt;
+    s.row = findSurfaceRow(Math.round(s.x), s.row);
+
+    // Commit to the edge we're tracking as soon as we actually reach its
+    // boundary -- jump/climb exactly when it reaches the ledge.
+    if (s.pendingEdge) {
+      const edgeX = s.pendingCurCol + s.dir * 0.5;
+      const reachedEdge = s.dir > 0 ? (prevX < edgeX && s.x >= edgeX) : (prevX > edgeX && s.x <= edgeX);
+      if (reachedEdge) {
+        s.x = edgeX;
+        if (s.pendingEdge === 'fall') {
+          s.mode = 'fall';
+          s.row = findSurfaceRow(s.pendingCurCol, s.row);
+          s.fallStartRow = s.row;
+          s.vy = SPIDER_JUMP_VY;
+          return;
+        } else {
+          s.mode = 'climb';
+          s.wallX = s.dir > 0 ? s.pendingCol : s.pendingCol + 1; // vertical boundary between the two columns
+          s.climbDirAtStart = s.dir;
+          s.climbTargetRow = findSurfaceRow(s.pendingCol, s.row - SPIDER_MAX_CLIMB);
+          s.climbTargetCol = s.pendingCol;
+          s.row = findSurfaceRow(s.pendingCurCol, s.row);
+          return;
+        }
+      }
+    }
+
+    const speedFactor = Math.min(1, Math.abs(s.vel) / SPIDER_SPEED);
+    const driveDir = s.dir * speedFactor;
+    updateSpiderLegSet(
+      s,
+      (i) => ({ x: s.bodyPx.x + SPIDER_LEG_OFFSETS[i] * BLOCK, y: s.bodyPx.y }),
+      (i) => {
+        const targetX = s.bodyPx.x + SPIDER_LEG_OFFSETS[i] * BLOCK + driveDir * LEG_STRIDE_AHEAD_PX;
+        return { x: targetX, y: groundRowAt(targetX / BLOCK, s.row) * BLOCK };
+      },
+      dt
+    );
+  }
+
+  function updateFallingSpider(s, dt) {
+    s.vy += SPIDER_GRAVITY * dt;
+    s.row += s.vy * dt;
+    s.x += s.dir * SPIDER_SPEED * dt; // carries its walking momentum forward through the jump arc
+    const landRow = groundRowAt(s.x, s.row);
+    if (s.row >= landRow) {
+      const fallDist = landRow - s.fallStartRow;
+      s.row = landRow;
+      s.mode = 'walk';
+      s.vel = 0;
+      s.squash = Math.max(0, Math.min(1, fallDist / SPIDER_MAX_FALL));
+      s.squashT = 0;
+      s.noClimbMs = 500; // don't immediately latch onto a wall right after a jump-down landing
+    }
+    // legs stay tucked in while airborne -- see drawFallingSpider
+  }
+
+  function updateClimbingSpider(s, dt) {
+    s.row -= SPIDER_CLIMB_SPEED * dt; // climbing = moving toward a smaller row (upward)
+
+    if (s.row <= s.climbTargetRow) {
+      s.row = s.climbTargetRow;
+      s.mode = 'walk';
+      s.x = s.climbTargetCol + s.climbDirAtStart * 0.3; // step off onto the surface above
+      s.dir = s.climbDirAtStart;
+      s.vel = 0;
+      s.noClimbMs = 300; // just finished climbing -- don't immediately latch onto another wall right at the top
+      return;
+    }
+
+    // Climbing at constant speed, always moving up -- legs reach for the
+    // wall at their row and stride slightly ahead (upward).
+    const wallXPix = s.wallX * BLOCK;
+    updateSpiderLegSet(
+      s,
+      (i) => ({ x: s.bodyPx.x, y: s.bodyPx.y + SPIDER_LEG_OFFSETS[i] * BLOCK }),
+      (i) => ({ x: wallXPix, y: s.bodyPx.y + SPIDER_LEG_OFFSETS[i] * BLOCK - LEG_STRIDE_AHEAD_PX }),
+      dt
+    );
+  }
+
+  function updateSpiders(dt) {
+    for (const s of spiders) {
+      if (s.mode === 'walk') updateWalkingSpider(s, dt);
+      else if (s.mode === 'fall') updateFallingSpider(s, dt);
+      else if (s.mode === 'climb') updateClimbingSpider(s, dt);
+      updateSpiderBodyPx(s, dt);
+    }
+  }
+
+  // legs are just drawn directly, fully opaque, one on top of another --
+  // nothing ever gets canceled out by an overlap. Instead, each leg gets
+  // its own slightly different shade, so when two legs sit next to (or
+  // land on top of) each other, you can tell them apart by that color
+  // difference rather than by any transparency trick.
+  const SPIDER_LEG_COLORS = ['#000000', '#2a2a2a', '#000000'];
+
+  // ---- drawing ---------------------------------------------------------------
+  // The body box is computed straight from the terrain/wall every frame --
+  // no rotation, no blending between stances. Legs are drawn as a single
+  // straight segment from attach point directly to foot -- no elbow/bend.
+  // Plotted pixel-by-pixel (Bresenham) and filled with fillRect rather than
+  // ctx.stroke(), because a stroked diagonal line gets anti-aliased by the
+  // canvas even with imageSmoothingEnabled off (that setting only affects
+  // drawImage, not vector strokes). Plotting our own pixels keeps every leg
+  // a single row of fully solid, crisp pixels, consistent with the rest of
+  // the sprite.
+  function drawSpiderLegLine(ax, ay, fx, fy, color) {
+    // Defensive guard: if any coordinate is ever non-finite, skip drawing
+    // this leg instead of hanging in a loop that can never reach its exit
+    // condition.
+    if (![ax, ay, fx, fy].every(Number.isFinite)) return;
+    ctx.fillStyle = color;
+    let x0 = ax, y0 = ay, x1 = fx, y1 = fy;
+    const dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+    const dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+    let err = dx + dy;
+    const maxIter = (dx + Math.abs(dy)) * 2 + 4;
+    for (let i = 0; i < maxIter; i++) {
+      ctx.fillRect(x0, y0, 1, 1);
+      if (x0 === x1 && y0 === y1) break;
+      const e2 = 2 * err;
+      if (e2 >= dy) { err += dy; x0 += sx; }
+      if (e2 <= dx) { err += dx; y0 += sy; }
+    }
+  }
+
+  function drawWalkingSpider(s, camPxX, camPxY) {
+    const bodyBottomPix = Math.round(s.bodyPx.y - camPxY);
+    const bodyTopPix = bodyBottomPix - 2;
+    const bx = Math.round(s.bodyPx.x - camPxX);
+
+    s.legs.forEach((leg, i) => {
+      const attachXpix = Math.round(s.bodyPx.x + leg.offset * BLOCK - camPxX);
+      let footX = leg.footPx.x - camPxX, footY = leg.footPx.y - camPxY;
+      if (s.squash > 0) {
+        // fresh off a landing, legs come in compressed toward the body and
+        // spring back out as s.squash eases to 0
+        footY += s.squash * (bodyBottomPix + JUMP_LEG_LEN - footY);
+      }
+      const clamped = clampFootToReach(attachXpix, bodyBottomPix, footX, footY, LEG_MAX_REACH_PX);
+      drawSpiderLegLine(attachXpix, bodyBottomPix, Math.round(clamped.x), Math.round(clamped.y), SPIDER_LEG_COLORS[i % SPIDER_LEG_COLORS.length]);
+    });
+
+    ctx.drawImage(spiderSheet, 0, 0, 2, 2, bx - 1, bodyTopPix, 2, 2);
+  }
+
+  function drawFallingSpider(s, camPxX, camPxY) {
+    const bx = Math.round(s.bodyPx.x - camPxX);
+    const bodyBottomPix = Math.round(s.bodyPx.y - camPxY);
+    const bodyTopPix = bodyBottomPix - 2;
+    SPIDER_LEG_OFFSETS.forEach((off, i) => {
+      const lx = Math.round(s.bodyPx.x + off * BLOCK - camPxX);
+      ctx.fillStyle = SPIDER_LEG_COLORS[i % SPIDER_LEG_COLORS.length];
+      ctx.fillRect(lx, bodyBottomPix, 1, JUMP_LEG_LEN); // legs extended straight down while airborne
+    });
+    ctx.drawImage(spiderSheet, 0, 0, 2, 2, bx - 1, bodyTopPix, 2, 2);
+  }
+
+  function drawClimbingSpider(s, camPxX, camPxY) {
+    // body box: fixed SPIDER_BODY_WALL_GAP px out from the wall, sliding
+    // straight up/down it -- never rotated, never blended with the ground
+    // stance
+    const bodyCx = Math.round(s.bodyPx.x - camPxX);
+    const bodyCy = Math.round(s.bodyPx.y - camPxY);
+
+    s.legs.forEach((leg, i) => {
+      const attachYpix = Math.round(s.bodyPx.y + leg.offset * BLOCK - camPxY);
+      const clamped = clampFootToReach(bodyCx, attachYpix, leg.footPx.x - camPxX, leg.footPx.y - camPxY, LEG_MAX_REACH_PX);
+      drawSpiderLegLine(bodyCx, attachYpix, Math.round(clamped.x), Math.round(clamped.y), SPIDER_LEG_COLORS[i % SPIDER_LEG_COLORS.length]);
+    });
+
+    ctx.drawImage(spiderSheet, 0, 0, 2, 2, bodyCx - 1, bodyCy - 1, 2, 2);
+  }
+
+  function drawSpiders(camX, camY) {
+    if (!spiderSheetReady) return;
+    const camPxX = camX * BLOCK, camPxY = camY * BLOCK;
+    for (const s of spiders) {
+      const rx = s.bodyPx.x / BLOCK - camX, ry = s.bodyPx.y / BLOCK - camY;
+      if (rx < -3 || rx > COLS + 3 || ry < -6 || ry > ROWS + 6) continue;
+      if (s.mode === 'walk') drawWalkingSpider(s, camPxX, camPxY);
+      else if (s.mode === 'fall') drawFallingSpider(s, camPxX, camPxY);
+      else if (s.mode === 'climb') drawClimbingSpider(s, camPxX, camPxY);
+    }
+  }
+
 
   function drawItemDrops(camX, camY) {
     const bobUp = Math.floor(performance.now() / 500) % 2 === 0;
@@ -2608,10 +3689,13 @@
   document.getElementById('invToggle').addEventListener('click', toggleInventory);
   window.addEventListener('keydown', e => {
     const k = e.key.toLowerCase();
-    if (k === 'e' || k === 'i') { toggleInventory(); e.preventDefault(); }
+    // (I is deliberately not bound here -- holding it shows the selected
+    // item's name instead, see updateItemStrip/keys['i'] below)
+    if (k === 'e') { toggleInventory(); e.preventDefault(); }
     else if (k === 'escape' && invOpen) { closeInventory(); }
     else if (k === 'escape' && craftOpen) { closeCraftingUI(); }
     else if (k === 'escape' && tableCraftOpen) { closeTableCraftingUI(); }
+    else if (k === 'escape' && furnaceOpen) { closeFurnaceUI(); }
   });
 
   // ---- crafting screen: opened from a button on the main inventory screen,
@@ -2629,11 +3713,25 @@
   // CRAFTING_TABLE block out in the world. Same idea as the small bench
   // above but with a 3x3 input grid instead of 2x2 ----
   let tableCraftOpen = false;
-  function openTableCraftingUI() { tableCraftOpen = true; invOpen = false; craftOpen = false; resetBreaking(); }
+  function openTableCraftingUI() { tableCraftOpen = true; invOpen = false; craftOpen = false; furnaceOpen = false; resetBreaking(); }
   function closeTableCraftingUI() {
     clearCraftSlotsToInventory(tableCraftSlots, player.x, player.y);
     if (tableOutputVirtual[0]) { returnItemsToInventory(tableOutputVirtual[0], player.x, player.y); tableOutputVirtual[0] = null; }
     tableCraftOpen = false; invSelection = null; splitArmed = false;
+  }
+
+  // ---- furnace screen: opened by interacting with a placed FURNACE block.
+  // Unlike the crafting screens' output slot, the furnace's output fills in
+  // on its own as updateFurnace() smelts things, so closing the screen just
+  // returns whatever's sitting in all three slots (fuel, item, output) to
+  // the inventory rather than needing a special "take the craft" step ----
+  let furnaceOpen = false;
+  function openFurnaceUI() { furnaceOpen = true; invOpen = false; craftOpen = false; tableCraftOpen = false; resetBreaking(); }
+  function closeFurnaceUI() {
+    if (furnaceFuelSlot[0]) { returnItemsToInventory(furnaceFuelSlot[0], player.x, player.y); furnaceFuelSlot[0] = null; }
+    if (furnaceItemSlot[0]) { returnItemsToInventory(furnaceItemSlot[0], player.x, player.y); furnaceItemSlot[0] = null; }
+    if (furnaceOutputSlot[0]) { returnItemsToInventory(furnaceOutputSlot[0], player.x, player.y); furnaceOutputSlot[0] = null; }
+    furnaceOpen = false; invSelection = null; splitArmed = false;
   }
 
   function getSlot(group, index) {
@@ -2642,6 +3740,10 @@
     if (group === 'output') return craftOutputVirtual[0];
     if (group === 'tableCraft') return tableCraftSlots[index];
     if (group === 'tableOutput') return tableOutputVirtual[0];
+    if (group === 'furnaceFuel') return furnaceFuelSlot[0];
+    if (group === 'furnaceItem') return furnaceItemSlot[0];
+    if (group === 'furnaceOutput') return furnaceOutputSlot[0];
+    if (group === 'armor') return armorSlots[index];
     return inventorySlots[index];
   }
   function setSlot(group, index, val) {
@@ -2650,6 +3752,10 @@
     else if (group === 'output') craftOutputVirtual[0] = val;
     else if (group === 'tableCraft') tableCraftSlots[index] = val;
     else if (group === 'tableOutput') tableOutputVirtual[0] = val;
+    else if (group === 'furnaceFuel') furnaceFuelSlot[0] = val;
+    else if (group === 'furnaceItem') furnaceItemSlot[0] = val;
+    else if (group === 'furnaceOutput') furnaceOutputSlot[0] = val;
+    else if (group === 'armor') armorSlots[index] = val;
     else inventorySlots[index] = val;
   }
 
@@ -2733,6 +3839,11 @@
     const heldVal = getSlot(from.group, from.index);
     const destVal = getSlot(group, index);
 
+    // armor slots only ever accept the one armor piece type they're meant
+    // for (helm slot only takes a helmet, etc, regardless of metal) -- an
+    // incompatible drop is just ignored, leaving the current selection held
+    if (group === 'armor' && (!heldVal || ARMOR_TYPE_SLOT[heldVal.type] !== index)) return;
+
     // same block type in both slots: combine into the destination stack,
     // leaving any overflow (beyond that item's stack max) behind in the source slot
     if (heldVal && destVal && heldVal.type === destVal.type) {
@@ -2758,7 +3869,8 @@
     if (hit.region === 'openCraft') { openCraftingUI(); return; }
     if (hit.region === 'inv') { handleSlotClick('inv', hit.index); return; }
     if (hit.region === 'hotbar') { handleSlotClick('hotbar', hit.index); return; }
-    // armor / bg / qty: not interactive yet
+    if (hit.region === 'armor') { handleSlotClick('armor', hit.index); return; }
+    // bg / qty: not interactive
   }
 
   function drawInventory() {
@@ -2770,9 +3882,19 @@
     const blockTile = (type, dx, dy) => { const isItem = ITEMS.has(type); if (isItem) uiTile(UI_EMPTY_X, dx, dy); const [sx, sy] = isItem ? ITEM_SHEET_POS[type] : SHEET_POS[type]; ctx.drawImage(isItem ? itemSheet : sheet, sx, sy, BLOCK, BLOCK, dx, dy, BLOCK, BLOCK); };
     const blink = Math.floor(performance.now() / 400) % 2 === 0;
 
-    // armor row (not usable yet, always shown as empty slots) + bg fill + exit,
-    // with the crafting-screen button directly left of the exit button
-    for (let i = 0; i < 4; i++) uiTile(UI_EMPTY_X, i * 2, 0);
+    // armor row + bg fill + exit, with the crafting-screen button directly
+    // left of the exit button. Each of the 4 slots only accepts its matching
+    // armor piece (helm/chest/legs/boots); while a compatible piece is held,
+    // its one valid slot blinks white to show where it can be dropped
+    const heldForArmorHint = invSelection ? getSlot(invSelection.group, invSelection.index) : null;
+    for (let i = 0; i < 4; i++) {
+      const dx = i * 2, dy = 0;
+      const isSel = invSelection && invSelection.group === 'armor' && invSelection.index === i;
+      const isHint = !isSel && heldForArmorHint && ARMOR_TYPE_SLOT[heldForArmorHint.type] === i;
+      if ((isSel || isHint) && blink) { ctx.fillStyle = '#ffffff'; ctx.fillRect(dx, dy, 2, 2); }
+      else if (armorSlots[i]) blockTile(armorSlots[i].type, dx, dy);
+      else uiTile(UI_EMPTY_X, dx, dy);
+    }
     for (let i = 0; i < 2; i++) uiTile(UI_BG_X, 8 + i * 2, 0);
     if (craftBtnReady) ctx.drawImage(craftBtnImg, 12, 0);
     uiTile(UI_EXIT_X, 14, 0);
@@ -2872,12 +3994,12 @@
   // since they use the whole grid (or all 3 columns). Pattern strings are
   // read row-major, top-left to bottom-right: 'C' = cobblestone, 'S' = stick,
   // '.' = must be empty.
-  function matchesPattern9(slots9, pattern) {
+  function matchesPattern9(slots9, pattern, materialType = COBBLESTONE) {
     for (let i = 0; i < 9; i++) {
       const cell = pattern[i];
       const s = slots9[i];
       if (cell === '.') { if (s) return false; }
-      else if (cell === 'C') { if (!s || s.type !== COBBLESTONE || s.count < 1) return false; }
+      else if (cell === 'C') { if (!s || s.type !== materialType || s.count < 1) return false; }
       else if (cell === 'S') { if (!s || s.type !== STICK || s.count < 1) return false; }
     }
     return true;
@@ -2904,9 +4026,73 @@
     return null;
   }
 
+  // copper and iron tools follow the exact same shapes as the stone tools
+  // above (same 'C' = material / 'S' = stick / '.' = empty pattern strings),
+  // just with the ingot item in place of cobblestone -- so the patterns are
+  // shared and only the material + result types change per metal
+  function metalToolRecipes(materialType, pickaxeType, swordType, axeType) {
+    return STONE_TOOL_PATTERNS.map(({ pattern, type }) => {
+      const toolType = type === STONE_PICKAXE ? pickaxeType : type === STONE_SWORD ? swordType : axeType;
+      return { pattern, type: toolType, materialType };
+    });
+  }
+  const METAL_TOOL_PATTERNS = [
+    ...metalToolRecipes(COPPER, COPPER_PICKAXE, COPPER_SWORD, COPPER_AXE),
+    ...metalToolRecipes(IRON, IRON_PICKAXE, IRON_SWORD, IRON_AXE),
+    ...metalToolRecipes(TUNGSTEN, TUNGSTEN_PICKAXE, TUNGSTEN_SWORD, TUNGSTEN_AXE),
+  ];
+
+  function matchMetalToolRecipe(slots9) {
+    for (const { pattern, type, materialType } of METAL_TOOL_PATTERNS) {
+      if (matchesPattern9(slots9, pattern, materialType)) {
+        const consume = pattern.map(cell => (cell === '.' ? 0 : 1));
+        return { type, count: 1, consume };
+      }
+    }
+    return null;
+  }
+
+  // armor shapes, full-3x3-only like the metal tools above: 'C' = material
+  // (ingot), '.' = must be empty. Same 4 shapes are shared across all three
+  // metals, only the material + result types change per metal.
+  const ARMOR_SHAPE_PATTERNS = [
+    // helmet: a band of 3 across the top, open sides below, nothing on the bottom row
+    { pattern: ['C','C','C', 'C','.','C', '.','.','.'], slot: 'helm' },
+    // chestplate: shoulders on the top corners, full middle and bottom rows
+    { pattern: ['C','.','C', 'C','C','C', 'C','C','C'], slot: 'chest' },
+    // leggings: full waistband on top, two legs going down either side
+    { pattern: ['C','C','C', 'C','.','C', 'C','.','C'], slot: 'legs' },
+    // boots: just the two foot pieces, bottom two rows only
+    { pattern: ['.','.','.', 'C','.','C', 'C','.','C'], slot: 'boots' },
+  ];
+  function metalArmorRecipes(materialType, helmType, chestType, legsType, bootsType) {
+    const typeForSlot = { helm: helmType, chest: chestType, legs: legsType, boots: bootsType };
+    return ARMOR_SHAPE_PATTERNS.map(({ pattern, slot }) => ({ pattern, type: typeForSlot[slot], materialType }));
+  }
+  const METAL_ARMOR_PATTERNS = [
+    ...metalArmorRecipes(COPPER, COPPER_HELM, COPPER_CHEST, COPPER_LEGS, COPPER_BOOTS),
+    ...metalArmorRecipes(IRON, IRON_HELM, IRON_CHEST, IRON_LEGS, IRON_BOOTS),
+    ...metalArmorRecipes(TUNGSTEN, TUNGSTEN_HELM, TUNGSTEN_CHEST, TUNGSTEN_LEGS, TUNGSTEN_BOOTS),
+  ];
+  function matchMetalArmorRecipe(slots9) {
+    for (const { pattern, type, materialType } of METAL_ARMOR_PATTERNS) {
+      if (matchesPattern9(slots9, pattern, materialType)) {
+        const consume = pattern.map(cell => (cell === '.' ? 0 : 1));
+        return { type, count: 1, consume };
+      }
+    }
+    return null;
+  }
+
   function getTableCraftRecipeOutput() {
     const stoneTool = matchStoneToolRecipe(tableCraftSlots);
     if (stoneTool) return stoneTool;
+
+    const metalTool = matchMetalToolRecipe(tableCraftSlots);
+    if (metalTool) return metalTool;
+
+    const metalArmor = matchMetalArmorRecipe(tableCraftSlots);
+    if (metalArmor) return metalArmor;
 
     for (let i = 0; i < tableCraftSlots.length; i++) {
       const s = tableCraftSlots[i];
@@ -3213,6 +4399,182 @@
     }
   }
 
+  // ---- furnace screen (mapping: grey = bg, green = fuel-in slot, orange =
+  // item-to-smelt slot, dark grey = animated progress bar, light blue =
+  // output slot, purple = fuel bar, red = heat bar, white = oxygen button,
+  // blue = backpack slots, yellow = hotbar slots). Raw pixel regions below
+  // are lifted straight from the 16x16 mapping image ----
+  function hitTestFurnaceUI(px, py) {
+    if (px >= 14 && px <= 15 && py >= 0 && py <= 1) return { region: 'exit' };
+    if (px <= 1 && py >= 2 && py <= 3) return { region: 'furnaceFuel' };
+    if (px >= 2 && px <= 3 && py >= 2 && py <= 3) return { region: 'furnaceItem' };
+    if (px >= 8 && px <= 9 && py >= 2 && py <= 3) return { region: 'furnaceOutput' };
+    if (px >= 8 && px <= 9 && py >= 4 && py <= 5) return { region: 'oxygen' };
+    if (py >= 6 && py <= 13) {
+      const col = Math.floor(px / 2), row = Math.floor((py - 6) / 2);
+      return { region: 'inv', index: row * INV_COLS + col };
+    }
+    if (py >= 14 && py <= 15) return { region: 'hotbar', index: Math.floor(px / 2) };
+    return { region: 'bg' }; // progress bar (x4-7,y2-3) and the two 1px fuel/heat bars are decorative, not clickable
+  }
+
+  function handleFurnaceUIClick(px, py) {
+    const hit = hitTestFurnaceUI(px, py);
+    if (hit.region === 'exit') { closeFurnaceUI(); return; }
+    if (hit.region === 'oxygen') { pressOxygenButton(); return; }
+    if (hit.region === 'furnaceFuel') { handleSlotClick('furnaceFuel', 0); return; }
+    if (hit.region === 'furnaceItem') { handleSlotClick('furnaceItem', 0); return; }
+    if (hit.region === 'furnaceOutput') { handleSlotClick('furnaceOutput', 0); return; }
+    if (hit.region === 'inv') { handleSlotClick('inv', hit.index); return; }
+    if (hit.region === 'hotbar') { handleSlotClick('hotbar', hit.index); return; }
+    // bg: not interactive
+  }
+
+  function drawFurnaceUI() {
+    if (!uiSheetReady || !sheetReady || !itemSheetReady || !furnaceProgressReady || !furnaceOxygenBtnReady) return;
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, VIEW, VIEW);
+
+    const uiTile = (srcX, dx, dy) => ctx.drawImage(uiSheet, srcX, 0, BLOCK, BLOCK, dx, dy, BLOCK, BLOCK);
+    const blockTile = (type, dx, dy) => { const isItem = ITEMS.has(type); if (isItem) uiTile(UI_EMPTY_X, dx, dy); const [sx, sy] = isItem ? ITEM_SHEET_POS[type] : SHEET_POS[type]; ctx.drawImage(isItem ? itemSheet : sheet, sx, sy, BLOCK, BLOCK, dx, dy, BLOCK, BLOCK); };
+    const blink = Math.floor(performance.now() / 400) % 2 === 0;
+
+    // background fill across the whole screen; special regions draw over top of it
+    for (let row = 0; row < 8; row++) {
+      for (let col = 0; col < 8; col++) uiTile(UI_BG_X, col * 2, row * 2);
+    }
+
+    // fuel-in slot, drawn in three layers: the slot tile itself, the fire
+    // animation (always playing, at half opacity) over that, then whatever
+    // item is sitting in the slot on top of the fire
+    {
+      const dx = 0, dy = 2;
+      const stack = furnaceFuelSlot[0];
+      const isSel = invSelection && invSelection.group === 'furnaceFuel' && invSelection.index === 0;
+      uiTile(UI_EMPTY_X, dx, dy);
+      if (fireSheetReady) {
+        ctx.save();
+        ctx.globalAlpha = 0.5;
+        drawFireOverlay(dx, dy);
+        ctx.restore();
+      }
+      if (isSel && blink) { ctx.fillStyle = '#ffffff'; ctx.fillRect(dx, dy, 2, 2); }
+      else if (stack) {
+        // draw straight from the sprite sheet, skipping blockTile's usual
+        // opaque backdrop redraw, so the fire animation underneath stays
+        // visible through any transparent margin of the item's sprite
+        const isItem = ITEMS.has(stack.type);
+        const [sx, sy] = isItem ? ITEM_SHEET_POS[stack.type] : SHEET_POS[stack.type];
+        ctx.drawImage(isItem ? itemSheet : sheet, sx, sy, BLOCK, BLOCK, dx, dy, BLOCK, BLOCK);
+      }
+    }
+
+    // item-to-smelt slot
+    {
+      const dx = 2, dy = 2;
+      const stack = furnaceItemSlot[0];
+      const isSel = invSelection && invSelection.group === 'furnaceItem' && invSelection.index === 0;
+      if (isSel && blink) { ctx.fillStyle = '#ffffff'; ctx.fillRect(dx, dy, 2, 2); }
+      else if (stack) blockTile(stack.type, dx, dy);
+      else uiTile(UI_EMPTY_X, dx, dy);
+    }
+
+    // smelting progress bar: the total smelt time is split into 5 equal
+    // stages -- stage 0 (the first fifth) shows no bar at all, then stages
+    // 1-4 map onto the sheet's four stacked 4x2 frames (top = stage 1,
+    // bottom = stage 4). Background is drawn first since the sheet's black
+    // pixels are baked transparent, so it shows through the unfilled part
+    // of whichever frame is active.
+    {
+      uiTile(UI_BG_X, 4, 2);
+      uiTile(UI_BG_X, 6, 2);
+      const inputStack = furnaceItemSlot[0];
+      const recipe = inputStack ? SMELT_RECIPES[inputStack.type] : null;
+      if (recipe) {
+        const frac = Math.max(0, Math.min(1, furnace.progressMs / recipe.timeMs));
+        const stage = Math.min(4, Math.floor(frac * 5)); // 0..4
+        if (stage > 0 && furnaceProgressCanvas) {
+          const frame = stage - 1; // 0..3, row index into the sheet
+          ctx.drawImage(furnaceProgressCanvas, 0, frame * 2, 4, 2, 4, 2, 4, 2);
+        }
+      }
+    }
+
+    // output slot
+    {
+      const dx = 8, dy = 2;
+      const stack = furnaceOutputSlot[0];
+      const isSel = invSelection && invSelection.group === 'furnaceOutput' && invSelection.index === 0;
+      if (isSel && blink) { ctx.fillStyle = '#ffffff'; ctx.fillRect(dx, dy, 2, 2); }
+      else if (stack) blockTile(stack.type, dx, dy);
+      else uiTile(UI_EMPTY_X, dx, dy);
+    }
+
+    // fuel bar (y=4, 8px wide, 1px tall): dark grey background, orange fill
+    // left-to-right for how much burn time is left in the current fuel item
+    {
+      const maxUnits = furnace.fuelType ? FUEL_UNITS[furnace.fuelType] : 0;
+      const fuelFrac = maxUnits > 0 ? Math.max(0, Math.min(1, furnace.fuelUnitsLeft / maxUnits)) : 0;
+      const filled = Math.round(fuelFrac * 8);
+      for (let x = 0; x < 8; x++) {
+        ctx.fillStyle = x < filled ? '#ff6c00' : '#131313';
+        ctx.fillRect(x, 4, 1, 1);
+      }
+    }
+
+    // heat bar (y=5, 8px wide, 1px tall): dark grey background, red fill
+    // left-to-right for the current heat level out of HEAT_MAX
+    {
+      const heatFrac = Math.max(0, Math.min(1, furnace.heat / HEAT_MAX));
+      const filled = Math.round(heatFrac * 8);
+      for (let x = 0; x < 8; x++) {
+        ctx.fillStyle = x < filled ? '#ff0000' : '#131313';
+        ctx.fillRect(x, 5, 1, 1);
+      }
+    }
+
+    // oxygen button icon: mirrors left-to-right on a timer so it reads as a
+    // little bellows/fan animating, not a static icon
+    {
+      const mirrored = Math.floor(performance.now() / OXYGEN_BTN_FLIP_MS) % 2 === 1;
+      ctx.save();
+      if (mirrored) {
+        ctx.translate(8 + 2, 4);
+        ctx.scale(-1, 1);
+        ctx.drawImage(furnaceOxygenBtnImg, 0, 0);
+      } else {
+        ctx.drawImage(furnaceOxygenBtnImg, 8, 4);
+      }
+      ctx.restore();
+    }
+
+    // exit button
+    uiTile(UI_EXIT_X, 14, 0);
+
+    // backpack grid, same layout as the other inventory-carrying screens
+    for (let row = 0; row < INV_ROWS; row++) {
+      for (let col = 0; col < INV_COLS; col++) {
+        const idx = row * INV_COLS + col;
+        const dx = col * 2, dy = 6 + row * 2;
+        const stack = inventorySlots[idx];
+        const isSel = invSelection && invSelection.group === 'inv' && invSelection.index === idx;
+        if (isSel && blink) { ctx.fillStyle = '#ffffff'; ctx.fillRect(dx, dy, 2, 2); }
+        else if (stack) blockTile(stack.type, dx, dy);
+        else uiTile(UI_EMPTY_X, dx, dy);
+      }
+    }
+
+    // hotbar row
+    for (let col = 0; col < 8; col++) {
+      const dx = col * 2, dy = 14;
+      const stack = hotbarSlots[col];
+      const isSel = invSelection && invSelection.group === 'hotbar' && invSelection.index === col;
+      if (isSel && blink) { ctx.fillStyle = '#ffffff'; ctx.fillRect(dx, dy, 2, 2); }
+      else if (stack) blockTile(stack.type, dx, dy);
+      else uiTile(UI_EMPTY_X, dx, dy);
+    }
+  }
+
   // ---- mining / placing: triggered by Backspace / Enter, targeting whatever
   // block is under the cursor ----
   function cursorWorldPos() {
@@ -3281,17 +4643,17 @@
     [LEAF]: 1000, [GRASS]: 1500, [DIRT]: 1500, [SAND]: 1500, [CLAY]: 1750,
     [WOOD_PLANKS]: 2250, [WOOD]: 2500, [CRAFTING_TABLE]: 2500, [BRICK]: 3000,
     [COBBLESTONE]: 3750, [STONE]: 4000, [COAL_ORE]: 4000, [IRON_ORE]: 4500,
-    [COPPER_ORE]: 4500, [FURNACE]: 4500,
+    [COPPER_ORE]: 4500, [FURNACE]: 4500, [TUNGSTEN_ORE]: 5500,
   };
   function breakTimeFor(type) { return BREAK_TIME_MS[type] ?? 2500; }
 
   // axes: mine wood-family blocks faster, by tier
   const AXE_BLOCKS = new Set([WOOD, WOOD_PLANKS, CRAFTING_TABLE]);
-  const AXE_MULT = { [STONE_AXE]: 0.5, [COPPER_AXE]: 0.35, [IRON_AXE]: 0.22 };
+  const AXE_MULT = { [STONE_AXE]: 0.5, [COPPER_AXE]: 0.35, [IRON_AXE]: 0.22, [TUNGSTEN_AXE]: 0.15 };
 
   // pickaxes: mine stone-family blocks faster, by tier
-  const PICKAXE_BLOCKS = new Set([STONE, COBBLESTONE, COAL_ORE, IRON_ORE, COPPER_ORE, FURNACE, BRICK]);
-  const PICKAXE_MULT = { [STONE_PICKAXE]: 0.5, [COPPER_PICKAXE]: 0.35, [IRON_PICKAXE]: 0.22 };
+  const PICKAXE_BLOCKS = new Set([STONE, COBBLESTONE, COAL_ORE, IRON_ORE, COPPER_ORE, TUNGSTEN_ORE, FURNACE, BRICK, DIRT, GRASS, SAND, CLAY]);
+  const PICKAXE_MULT = { [STONE_PICKAXE]: 0.5, [COPPER_PICKAXE]: 0.35, [IRON_PICKAXE]: 0.22, [TUNGSTEN_PICKAXE]: 0.15 };
 
   // how long it actually takes to break block type `t` given the currently held item
   function breakTimeForHeld(type, heldType) {
@@ -3301,6 +4663,31 @@
       if (PICKAXE_BLOCKS.has(type) && PICKAXE_MULT[heldType] != null) return base * PICKAXE_MULT[heldType];
     }
     return base;
+  }
+
+  // most blocks drop themselves when broken; coal ore is the one exception,
+  // dropping the coal item rather than another coal ore block
+  const BREAK_DROP_TYPE = { [COAL_ORE]: COAL, [STONE]: COBBLESTONE };
+  function breakDropTypeFor(type) { return BREAK_DROP_TYPE[type] ?? type; }
+
+  // stone/cobblestone/ores need at least a stone pickaxe in hand to drop
+  // anything at all -- bare hands (or any non-pickaxe item) just breaks the
+  // block with nothing to show for it. Iron ore additionally needs a copper
+  // or iron pickaxe; a plain stone pickaxe can break it but still won't drop it.
+  const PICKAXE_TIER = { [STONE_PICKAXE]: 1, [COPPER_PICKAXE]: 2, [IRON_PICKAXE]: 2, [TUNGSTEN_PICKAXE]: 2 };
+  const DROP_REQUIRES_PICKAXE_TIER = {
+    [STONE]: 1, [COBBLESTONE]: 1, [COAL_ORE]: 1, [COPPER_ORE]: 1, [IRON_ORE]: 2,
+  };
+  // tungsten ore is a special case, not just the next tier up: it's only
+  // obtainable with an iron pickaxe specifically -- copper doesn't cut it
+  // here, unlike with iron ore. A tungsten pickaxe (the tier made from this
+  // very ore) works too, once you've got one.
+  const TUNGSTEN_ORE_PICKAXES = new Set([IRON_PICKAXE, TUNGSTEN_PICKAXE]);
+  function canDropWithHeld(type, heldType) {
+    if (type === TUNGSTEN_ORE) return TUNGSTEN_ORE_PICKAXES.has(heldType);
+    const required = DROP_REQUIRES_PICKAXE_TIER[type];
+    if (required == null) return true; // no pickaxe requirement on this block
+    return (PICKAXE_TIER[heldType] ?? 0) >= required;
   }
 
   // progress of whatever block is currently being held-broken, if any
@@ -3315,6 +4702,20 @@
     const pos = cursorWorldPos();
     if (!pos) { resetBreaking(); return; }
     const { worldX, worldY } = pos;
+
+    // pebbles: instant-mine, no progress bar/crack overlay -- just a chance
+    // at a cobblestone, same as kicking a rock on the ground
+    const PEBBLE_COBBLESTONE_CHANCE = 0.25;
+    const pebbleKey = `${activeLayer},${worldX},${worldY}`;
+    if (pebbles.has(pebbleKey)) {
+      pebbles.delete(pebbleKey);
+      if (Math.random() < PEBBLE_COBBLESTONE_CHANCE) {
+        if (!pickupBlock(COBBLESTONE)) spawnItemDrop(COBBLESTONE, 1, worldX, worldY);
+      }
+      resetBreaking();
+      return;
+    }
+
     const t = blockAtLayer(activeLayer, worldX, worldY);
     if (t === SKY || FLUIDS.has(t)) { resetBreaking(); return; }
 
@@ -3330,7 +4731,10 @@
     const heldNow = hotbarSlots[selectedIndex];
     if (breaking.progress >= breakTimeForHeld(t, heldNow ? heldNow.type : null)) {
       setBlockAtLayer(activeLayer, worldX, worldY, SKY);
-      if (!pickupBlock(t)) spawnItemDrop(t, 1, worldX, worldY);
+      if (canDropWithHeld(t, heldNow ? heldNow.type : null)) {
+        const dropType = breakDropTypeFor(t);
+        if (!pickupBlock(dropType)) spawnItemDrop(dropType, 1, worldX, worldY);
+      }
       resetBreaking();
     }
   }
@@ -3357,6 +4761,7 @@
     if (invOpen) { handleInventoryClick(cursor.x, cursor.y); return; }
     if (craftOpen) { handleCraftingUIClick(cursor.x, cursor.y); return; }
     if (tableCraftOpen) { handleTableCraftingUIClick(cursor.x, cursor.y); return; }
+    if (furnaceOpen) { handleFurnaceUIClick(cursor.x, cursor.y); return; }
 
     const pos = cursorWorldPos();
     if (pos) {
@@ -3364,6 +4769,10 @@
       const held = hotbarSlots[selectedIndex];
       if (targetT === CRAFTING_TABLE && !(held && held.type === STICK)) {
         openTableCraftingUI();
+        return;
+      }
+      if (targetT === FURNACE && !(held && held.type === STICK)) {
+        openFurnaceUI();
         return;
       }
     }
@@ -3392,6 +4801,53 @@
     // jump: on solid ground, or a gentle upward stroke while swimming
     const groundCols = colSpan(player.x);
     const onGround = groundCols.some(c => solidAt(c, Math.floor(player.y + 1.001)));
+
+    // fall damage: track the highest point since the player was last
+    // grounded, then charge for the drop once they land past the safe
+    // distance. Swimming into water (or lava) still counts as "landing"
+    // here since inFluid breaks the fall long before any collision would.
+    if (!wasOnGround && onGround) {
+      const fallDistance = player.y - fallStartY;
+      if (fallDistance > SAFE_FALL_BLOCKS) {
+        damagePlayer(Math.floor(fallDistance - SAFE_FALL_BLOCKS));
+      }
+    }
+    if (onGround || inFluid) fallStartY = player.y;
+    else fallStartY = Math.min(fallStartY, player.y);
+    wasOnGround = onGround;
+
+    // lava damage: a steady tick while any part of the player overlaps a lava tile
+    const inLava = swimCols.some(c => swimRows.some(r => lavaAt(c, r)));
+    if (inLava) {
+      lavaDamageMs -= frameDt;
+      if (lavaDamageMs <= 0) {
+        damagePlayer(2);
+        lavaDamageMs = LAVA_DAMAGE_INTERVAL_MS;
+      }
+    } else {
+      lavaDamageMs = 0;
+    }
+
+    // oxygen: only the head (the top row of the player's own block) counts
+    // as submerged, same as vanilla -- standing chest-deep with your head
+    // above the surface doesn't cost you air
+    const headRow = Math.floor(player.y);
+    playerUnderwater = swimCols.some(c => waterAt(c, headRow));
+    if (playerUnderwater) {
+      oxygenMs = Math.max(0, oxygenMs - frameDt / 3);
+    } else {
+      oxygenMs = Math.min(OXYGEN_MAX_MS, oxygenMs + frameDt * OXYGEN_REFILL_RATE);
+    }
+    if (playerUnderwater && oxygenMs <= 0) {
+      drownDamageMs -= frameDt;
+      if (drownDamageMs <= 0) {
+        damagePlayer(1);
+        drownDamageMs = DROWN_DAMAGE_INTERVAL_MS;
+      }
+    } else {
+      drownDamageMs = 0;
+    }
+
     if ((keys['w'] || keys[' '])) {
       if (onGround) player.vy = -JUMP;
       else if (inFluid) player.vy -= GRAV * 2.2; // swim stroke, fights buoyancy below
@@ -3459,6 +4915,8 @@
         player.y = snapToPixel(player.y);
       }
     }
+
+    if (damageFlashMs > 0) damageFlashMs = Math.max(0, damageFlashMs - frameDt);
   }
 
   // ---- render at true 16x16 resolution ----
@@ -3520,14 +4978,22 @@
     for (let ry = 0; ry < ROWS; ry++) {
       for (let rx = 0; rx < COLS; rx++) {
         const t = blockAtLayer(1, camX + rx, camY + ry);
+        const dx = rx * BLOCK, dy = ry * BLOCK;
         if (t !== SKY) {
           const isFlow = FLOW_TILES.has(t);
           const [sx, sy] = isFlow ? FLUID_SHEET_POS[t] : SHEET_POS[t];
-          const dx = rx * BLOCK, dy = ry * BLOCK;
           drawTile(isFlow ? fluidSheet : sheet, sx, sy, dx, dy, MIRRORED_TILES.has(t));
           if (burning.has(`1,${camX + rx},${camY + ry}`)) drawFireOverlay(dx, dy);
           ctx.fillStyle = 'rgba(0,0,0,0.5)';
           ctx.fillRect(dx, dy, BLOCK, BLOCK);
+        } else {
+          const pebbleOffset = pebbles.get(`1,${camX + rx},${camY + ry}`);
+          if (pebbleOffset !== undefined) {
+            ctx.fillStyle = pebbleColorFor(pebbleOffset);
+            ctx.fillRect(dx + pebbleOffset, dy + BLOCK - 1, 1, 1);
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillRect(dx + pebbleOffset, dy + BLOCK - 1, 1, 1);
+          }
         }
       }
     }
@@ -3536,12 +5002,18 @@
     for (let ry = 0; ry < ROWS; ry++) {
       for (let rx = 0; rx < COLS; rx++) {
         const t = blockAtLayer(0, camX + rx, camY + ry);
+        const dx = rx * BLOCK, dy = ry * BLOCK;
         if (t !== SKY) {
           const isFlow = FLOW_TILES.has(t);
           const [sx, sy] = isFlow ? FLUID_SHEET_POS[t] : SHEET_POS[t];
-          const dx = rx * BLOCK, dy = ry * BLOCK;
           drawTile(isFlow ? fluidSheet : sheet, sx, sy, dx, dy, MIRRORED_TILES.has(t));
           if (burning.has(`0,${camX + rx},${camY + ry}`)) drawFireOverlay(dx, dy);
+        } else {
+          const pebbleOffset = pebbles.get(`0,${camX + rx},${camY + ry}`);
+          if (pebbleOffset !== undefined) {
+            ctx.fillStyle = pebbleColorFor(pebbleOffset);
+            ctx.fillRect(dx + pebbleOffset, dy + BLOCK - 1, 1, 1);
+          }
         }
       }
     }
@@ -3569,7 +5041,10 @@
       drawLightningBolts(camX, camY);
       drawBreakOverlay(camX, camY);
       drawItemDrops(camX, camY);
+      drawSpiders(camX, camY);
       drawHotbar();
+      drawHpRow();
+      if (playerUnderwater || oxygenMs < OXYGEN_MAX_MS) drawOxygenRow();
     }
 
     // lightning flash: a translucent white-blue overlay across the whole
@@ -3579,6 +5054,35 @@
     if (screenFlash > 0.001) {
       ctx.fillStyle = `rgba(235,240,255,${(screenFlash * 0.85).toFixed(3)})`;
       ctx.fillRect(0, 0, VIEW, VIEW);
+    }
+
+    // damage flash: flat 50%-opacity red wash shown briefly whenever the
+    // player takes fall or lava damage
+    if (!demo && damageFlashMs > 0) {
+      ctx.fillStyle = 'rgba(255,0,0,0.5)';
+      ctx.fillRect(0, 0, VIEW, VIEW);
+    }
+  }
+
+  // hp row: 8 pixels in the top-left corner, each worth 2 hp (16 max) --
+  // red = both hp points remaining, dark red = one, black = none
+  function drawHpRow() {
+    for (let i = 0; i < 8; i++) {
+      const remaining = Math.max(0, Math.min(2, player.hp - i * 2));
+      ctx.fillStyle = remaining === 2 ? '#ff0000' : remaining === 1 ? '#8b0000' : '#000000';
+      ctx.fillRect(i, 0, 1, 1);
+    }
+  }
+
+  // oxygen row: 8 white pixels directly below the hearts. Shown while the
+  // player's head is underwater, and stays visible after surfacing until
+  // it's fully refilled -- it doesn't just vanish the instant you come up
+  // for air. Fills left-to-right based on remaining air.
+  function drawOxygenRow() {
+    const filled = Math.round((oxygenMs / OXYGEN_MAX_MS) * 8);
+    for (let i = 0; i < 8; i++) {
+      ctx.fillStyle = i < filled ? '#ffffff' : '#000000';
+      ctx.fillRect(i, 1, 1, 1);
     }
   }
 
@@ -3629,9 +5133,9 @@
   // the play-button asset (8x3px), transcribed from the uploaded asset PNG.
   // pure black pixels are transparent -- the grey panel tile shows through.
   const BTN_PIXELS = [
-    [[121,241,230],[109,241,230],[9,125,23], null,           null,           null,           [72,72,72],[78,78,78]],
-    [[91,241,224], [106,241,229],[9,130,23], null,           [83,59,28],     [75,55,25],     [78,78,78],[70,70,70]],
-    [[94,241,225], null,          [9,125,23],[9,130,23],     [74,54,25],     [83,59,28],     null,      [78,78,78]],
+    [[74,54,25],  [83,59,28],  [9,125,23], null,        null,        null,        [9,125,23], [9,130,23]],
+    [[83,59,28],  [74,54,25],  [9,130,23], null,        [83,59,28],  [75,55,25],  [9,130,23], [9,125,23]],
+    [[74,54,25],  null,        [9,125,23], [9,130,23],  [74,54,25],  [83,59,28],  null,       [9,130,23]],
   ];
 
   function drawMenu() {
@@ -3833,6 +5337,8 @@
     if (lastTime !== null) frameDt = ts - lastTime;
     lastTime = ts;
     updateSelName();
+    updateItemStrip();
+    updateFurnace(frameDt); // keeps burning/smelting whether or not the furnace screen is open
     if (menuOpen) {
       // let the world keep animating idly behind the opening screen
       // (weather, water, fire) without responding to player input
@@ -3870,10 +5376,13 @@
       drawCraftingUI();
     } else if (tableCraftOpen) {
       drawTableCraftingUI();
+    } else if (furnaceOpen) {
+      drawFurnaceUI();
     } else {
       update();
       updateBreaking(frameDt);
       updateItemDrops();
+      updateSpiders(frameDt);
       fluidTickAcc += frameDt;
       while (fluidTickAcc >= FLUID_TICK_MS) {
         simulateFluids();
@@ -3900,6 +5409,7 @@
       updateLightning(frameDt);
       draw();
     }
+    drawItemStrip();
     drawCursor();
     requestAnimationFrame(loop);
   }
