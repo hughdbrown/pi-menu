@@ -34,7 +34,7 @@ from .inventory import (
     TABLE_OUTPUT,
     Inventory,
 )
-from .furnace import Furnace
+from .furnace import FUEL_UNITS, Furnace
 from .player import BLOCK, COLS, PLAYER_COLOUR, ROWS, Breaker, Drops, Player
 from .sky import draw_sky
 from .terrain import BACK, FRONT, World
@@ -352,11 +352,15 @@ def draw_furnace(canvas: Canvas, inventory: Inventory, furnace: Furnace, now_ms:
     # oxygen button at (12,2), alternating tile-like flip
     canvas.tile(palette.FURNACE_OXYGEN_BUTTON, 0, 0, 12, 2)
 
-    # heat bar: 0-10 mapped to a small row of pixels under the input
-    heat_pixels = min(6, max(0, round(furnace.heat_fraction * 6)))
-    for i in range(6):
-        colour = palette.FURNACE_MOUTH if i < heat_pixels else palette.ROCK_DARK
-        canvas.set(4 + i, 5, colour)
+    # fuel bar (y=4) and heat bar (y=5), each 8 wide, as the HTML paints them:
+    # dark background, orange fill for fuel left, red fill for heat.
+    max_units = FUEL_UNITS.get(furnace.fuel_type, 0)
+    fuel_fraction = max(0.0, min(1.0, furnace.fuel_units_left / max_units)) if max_units else 0.0
+    fuel_pixels = round(fuel_fraction * 8)
+    heat_pixels = round(max(0.0, min(1.0, furnace.heat_fraction)) * 8)
+    for i in range(8):
+        canvas.set(i, 4, palette.FUEL_FILL if i < fuel_pixels else palette.BAR_BACKGROUND)
+        canvas.set(i, 5, palette.HEAT_FILL if i < heat_pixels else palette.BAR_BACKGROUND)
 
     # progress bar: 4 stages shown as a 4x2 overlay from the sheet
     stage = min(3, math.floor(furnace.progress_fraction * 4))
