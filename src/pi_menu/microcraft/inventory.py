@@ -23,11 +23,12 @@ from typing import NamedTuple, Optional
 
 from . import tiles
 from .tiles import (
-    BRICK, CLAY, COAL, COBBLESTONE, COPPER, COPPER_AXE, COPPER_PICKAXE, COPPER_SWORD,
-    CRAFTING_TABLE, DIRT, FURNACE, GRASS, IRON, IRON_AXE, IRON_PICKAXE, IRON_SWORD,
-    LEAF, SAND, STICK, STONE, STONE_AXE, STONE_PICKAXE, STONE_SWORD, WOOD, WOOD_PLANKS,
-    BUCKET_EMPTY,
+    ARMOR_SLOT, ARMOR_TYPES, BRICK, CLAY, COAL, COBBLESTONE, COPPER, COPPER_AXE,
+    COPPER_PICKAXE, COPPER_SWORD, CRAFTING_TABLE, DIRT, FURNACE, GRASS, IRON,
+    IRON_AXE, IRON_ORE, IRON_PICKAXE, IRON_SWORD, LEAF, SAND, STICK, STONE,
+    STONE_AXE, STONE_PICKAXE, STONE_SWORD, WOOD, WOOD_PLANKS, BUCKET_EMPTY,
 )
+
 
 HOTBAR_SIZE = 8
 INV_COLS = 8
@@ -39,10 +40,14 @@ TABLE_CRAFT_SIZE = 9
 #: Slot groups, named as the HTML names them.
 HOTBAR = "hotbar"
 BACKPACK = "inv"
+ARMOR = "armor"
 CRAFT = "craft"
 OUTPUT = "output"
 TABLE = "tableCraft"
 TABLE_OUTPUT = "tableOutput"
+FURNACE_FUEL = "furnaceFuel"
+FURNACE_ITEM = "furnaceItem"
+FURNACE_OUTPUT = "furnaceOutput"
 
 #: Two presses this close together on the selected stack arm a split.
 DOUBLE_TAP_MS = 350
@@ -95,13 +100,19 @@ STONE_TOOL_PATTERNS = (
 class Inventory:
     """Every slot, the hotbar selection, and the cursor's held stack."""
 
+    ARMOR_SIZE = 4
+
     def __init__(self, starter_kit: bool = True) -> None:
         self.hotbar: list = [None] * HOTBAR_SIZE
         self.backpack: list = [None] * INV_SIZE
+        self.armor: list = [None] * self.ARMOR_SIZE
         self.craft: list = [None] * CRAFT_SIZE
         self.craft_output: list = [None]
         self.table: list = [None] * TABLE_CRAFT_SIZE
         self.table_output: list = [None]
+        self.furnace_fuel: list = [None]
+        self.furnace_item: list = [None]
+        self.furnace_output: list = [None]
         self.selected = 1
         #: ``(group, index)`` of the stack picked up on screen, or None.
         self.selection: Optional[tuple] = None
@@ -138,8 +149,11 @@ class Inventory:
 
     def _slots(self, group: str) -> list:
         return {
-            HOTBAR: self.hotbar, BACKPACK: self.backpack, CRAFT: self.craft,
-            OUTPUT: self.craft_output, TABLE: self.table, TABLE_OUTPUT: self.table_output,
+            HOTBAR: self.hotbar, BACKPACK: self.backpack, ARMOR: self.armor,
+            CRAFT: self.craft, OUTPUT: self.craft_output,
+            TABLE: self.table, TABLE_OUTPUT: self.table_output,
+            FURNACE_FUEL: self.furnace_fuel, FURNACE_ITEM: self.furnace_item,
+            FURNACE_OUTPUT: self.furnace_output,
         }[group]
 
     def get(self, group: str, index: int) -> Optional[Stack]:
@@ -223,14 +237,18 @@ class Inventory:
 
     # -- moving things about -----------------------------------------------
 
+    def _can_equip(self, kind: int, armor_index: int) -> bool:
+        return kind in ARMOR_TYPES and ARMOR_SLOT.get(kind) == armor_index
+
     def slot_click(self, group: str, index: int, now_ms: float) -> None:
-        """One press on a slot: select, put back, swap, merge, or split."""
+        """One press on a slot: select, put back, swap, merge, split, or equip."""
         last_time, last_group, last_index = self._last_tap
         repeat = last_group == group and last_index == index and now_ms - last_time < DOUBLE_TAP_MS
         self._last_tap = (now_ms, group, index)
 
         slot = self.get(group, index)
         if self.selection is None:
+            # clicking an armor slot only picks up what belongs there
             if slot is not None:
                 self.selection = (group, index)
             self.split_armed = False
@@ -252,6 +270,13 @@ class Inventory:
         from_group, from_index = self.selection
         held = self.get(from_group, from_index)
         dest = self.get(group, index)
+
+        # armor slots reject items that don't belong in them
+        if group == ARMOR and held is not None and not self._can_equip(held.kind, index):
+            self.selection = None
+            self.split_armed = False
+            return
+
         if held is not None and dest is not None and held.kind == dest.kind:
             total = held.count + dest.count
             merged = min(total, tiles.stack_max_for(held.kind))
@@ -272,6 +297,11 @@ class Inventory:
             return
         there = self.get(*dest)
         if there is not None and there.kind != held.kind:
+            self.selection = None
+            return
+        # cannot split into an armor slot that doesn't accept the item
+        dest_group, dest_index = dest
+        if dest_group == ARMOR and not self._can_equip(held.kind, dest_index):
             self.selection = None
             return
         limit = tiles.stack_max_for(held.kind)
@@ -383,7 +413,7 @@ class Inventory:
         the backpack grid, a separator, and the hotbar."""
         if py <= 1:
             if px <= 7:
-                return "armor", px // 2
+                return ARMOR, px // 2
             if px <= 11:
                 return "bg", -1
             if px <= 13:
@@ -396,6 +426,25 @@ class Inventory:
         if py <= 13:
             return "bg", -1
         return HOTBAR, px // 2
+
+    @staticmethod
+    def hit_furnace(px: int, py: int) -> tuple:
+        """The furnace screen: fuel slot, item slot, output, oxygen button, exit."""
+        if 14 <= px <= 15 and 0 <= py <= 1:
+            return "exit", -1
+        if 0 <= px <= 1 and 2 <= py <= 3:
+            return FURNACE_FUEL, 0
+        if 4 <= px <= 5 and 2 <= py <= 3:
+            return FURNACE_ITEM, 0
+        if 8 <= px <= 9 and 2 <= py <= 3:
+            return FURNACE_OUTPUT, 0
+        if 12 <= px <= 13 and 2 <= py <= 3:
+            return "oxygen", -1
+        if 6 <= py <= 13:
+            return BACKPACK, ((py - 6) // 2) * INV_COLS + px // 2
+        if 14 <= py <= 15:
+            return HOTBAR, px // 2
+        return "bg", -1
 
     @staticmethod
     def hit_bench(px: int, py: int) -> tuple:
