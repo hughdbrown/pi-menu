@@ -89,7 +89,8 @@ def test_lift_raises_the_floor_but_keeps_black_and_transparent():
 
 
 def test_ui_and_fire_are_lifted_but_the_crack_stays_dark():
-    assert palette.UI_SHEET[0][0] == (255, 255, 255)
+    # The new HTML's UI sheet uses black as transparency for the empty slot;
+    # the red exit button tile is the first non-transparent pixel.
     assert palette.UI_SHEET[0][tiles.UI_EXIT_X][0] == 255
     assert palette.FIRE_SHEET[1][0] != sprites.FIRE_SHEET[1][0]
     assert palette.BREAK_SHEET is sprites.BREAK_SHEET
