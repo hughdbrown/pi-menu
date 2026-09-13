@@ -54,3 +54,22 @@ def noise1d(x: float, seed: int, freq: float, world_seed: int) -> float:
     v1 = hash1(x0 + 1, seed, world_seed)
     s = t * t * (3 - 2 * t)
     return v0 + (v1 - v0) * s
+
+
+def noise2d(x: float, y: float, seed: int, freq: float, world_seed: int) -> float:
+    """Bilinear value noise across both axes."""
+    xf = x * freq
+    yf = y * freq
+    x0 = math.floor(xf)
+    y0 = math.floor(yf)
+    tx = xf - x0
+    ty = yf - y0
+    v00 = hash2(x0, y0, seed, world_seed)
+    v10 = hash2(x0 + 1, y0, seed, world_seed)
+    v01 = hash2(x0, y0 + 1, seed, world_seed)
+    v11 = hash2(x0 + 1, y0 + 1, seed, world_seed)
+    sx = tx * tx * (3 - 2 * tx)
+    sy = ty * ty * (3 - 2 * ty)
+    vx0 = v00 + (v10 - v00) * sx
+    vx1 = v01 + (v11 - v01) * sx
+    return vx0 + (vx1 - vx0) * sy

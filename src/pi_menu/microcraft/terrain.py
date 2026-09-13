@@ -97,8 +97,24 @@ class Generator:
         return max(0.0, min(1.0, (m - (0.5 - COAST_BAND)) / (2 * COAST_BAND)))
 
     def ocean_floor(self, x: int) -> float:
-        rolling = self._noise(x, 7, 1 / 260)
-        return min(WORLD_H - 3, SEA_LEVEL + 6 + rolling * 12)
+        basin = self._noise(x, 7, 1 / 260)
+        basin_depth = 8 + basin * 40
+        trench_field = self._noise(x, 13, 1 / 70)
+        trench = max(0.0, trench_field - 0.72) / 0.28
+        trench = trench ** 2.5
+        trench_depth = trench * 110
+        depth = min(150, basin_depth + trench_depth)
+        return min(WORLD_H - 3, SEA_LEVEL + depth)
+
+    # -- spider nests --------------------------------------------------
+
+    SPIDER_NEST_MIN_DEPTH = 60
+
+    def spider_zone(self, x: int) -> bool:
+        return self._noise(wrap_x(x), 420, 1 / 500) > 0.92
+
+    def spider_nest_top(self, x: int) -> int:
+        return SURFACE_BASE + self.SPIDER_NEST_MIN_DEPTH
 
     # -- heights -------------------------------------------------------
 
@@ -231,8 +247,17 @@ class Generator:
             if deep < WORLD_H:
                 column[deep:] = bytes((tiles.STONE,)) * (WORLD_H - deep)
 
+        surfs = [height(start + lx) for lx in range(CHUNK_W)]
+        flooded_cols = [self.is_water_column(start + lx, layer) for lx in range(CHUNK_W)]
+
         self._plant_trees(grid, start, layer)
-        self._sprinkle_ore_and_lava(grid, start, layer)
+        self._sprinkle_ore_and_lava(grid, start, layer, surfs)
+        if layer == FRONT:
+            self._carve_caves(grid, start, surfs)
+            self._carve_spider_nests(grid, start, surfs)
+            self._scatter_pebbles(grid, start, surfs, flooded_cols)
+        else:
+            self._spider_web_background(grid, start, surfs)
         return grid
 
     def _bed_tile(self, x: int, y: int, ocean: bool) -> int:
@@ -257,12 +282,8 @@ class Generator:
                 for dy in range(-4, 0):
                     grid[lx][surf + dy] = tiles.WOOD
 
-    def _sprinkle_ore_and_lava(self, grid: list, start: int, layer: int) -> None:
-        """Ore in the stone, and stone giving way to lava towards the core.
-
-        The hash is inlined: this visits every stone cell in the chunk,
-        and a function call per cell is most of the cost.
-        """
+    def _sprinkle_ore_and_lava(self, grid: list, start: int, layer: int, surfs: list) -> None:
+        """Ore in the stone, and stone giving way to lava towards the core."""
         seed = 200 if layer == BACK else 199
         seed_term = (seed + self.seed) * 2246822519
         stone = tiles.STONE
@@ -292,6 +313,88 @@ class Generator:
                     column[y] = tiles.IRON_ORE
                 elif rr < 0.05:
                     column[y] = tiles.COPPER_ORE
+                elif y >= SURFACE_BASE + 70 and rr < 0.06:
+                    column[y] = tiles.TUNGSTEN_ORE
+
+    def _cave_value(self, x: float, y: float) -> float:
+        from .noise import noise2d
+        a = noise2d(x, y, 400, 1 / 18, self.seed)
+        b = noise2d(x, y, 410, 1 / 9, self.seed)
+        n = a * 0.65 + b * 0.35
+        return 1 - abs(n * 2 - 1)
+
+    def _carve_caves(self, grid: list, start: int, surfs: list) -> None:
+        CAVE_MIN_DEPTH_BELOW_SURFACE = 5
+        CAVE_MAX_Y = WORLD_H - 4
+        for lx in range(CHUNK_W):
+            x = wrap_x(start + lx)
+            cave_top = surfs[lx] + CAVE_MIN_DEPTH_BELOW_SURFACE
+            column = grid[lx]
+            for y in range(max(0, cave_top), CAVE_MAX_Y):
+                t = column[y]
+                if t not in (tiles.STONE, tiles.COAL_ORE, tiles.IRON_ORE, tiles.COPPER_ORE, tiles.TUNGSTEN_ORE):
+                    continue
+                if self._cave_value(x, y) > 0.90:
+                    column[y] = tiles.SKY
+
+    def _nest_value(self, x: float, y: float) -> float:
+        from .noise import noise2d
+        a = noise2d(x, y, 430, 1 / 11, self.seed)
+        b = noise2d(x, y, 431, 1 / 22, self.seed)
+        n = a * 0.5 + b * 0.5
+        return 1 - abs(n * 2 - 1)
+
+    def _carve_spider_nests(self, grid: list, start: int, surfs: list) -> None:
+        NEST_THRESHOLD = 0.62
+        NEST_MAX_Y = WORLD_H - 4
+        carved = []
+        for lx in range(CHUNK_W):
+            x = wrap_x(start + lx)
+            if not self.spider_zone(x):
+                continue
+            nest_top = max(surfs[lx] + self.SPIDER_NEST_MIN_DEPTH, self.spider_nest_top(x))
+            column = grid[lx]
+            for y in range(max(0, nest_top), NEST_MAX_Y):
+                t = column[y]
+                if t not in (tiles.STONE, tiles.COAL_ORE, tiles.IRON_ORE, tiles.COPPER_ORE, tiles.TUNGSTEN_ORE):
+                    continue
+                if self._nest_value(x, y) > NEST_THRESHOLD:
+                    column[y] = tiles.SKY
+                    carved.append((lx, y))
+        for lx, y in carved:
+            for nlx, ny in ((lx - 1, y), (lx + 1, y), (lx, y - 1), (lx, y + 1)):
+                if 0 <= nlx < CHUNK_W and 0 <= ny < WORLD_H:
+                    if grid[nlx][ny] == tiles.STONE:
+                        grid[nlx][ny] = tiles.WEBBING
+
+    def _spider_web_background(self, grid: list, start: int, surfs: list) -> None:
+        SPIDER_BG_WEB_CHANCE = 0.05
+        for lx in range(CHUNK_W):
+            x = wrap_x(start + lx)
+            if not self.spider_zone(x):
+                continue
+            nest_top = max(surfs[lx] + self.SPIDER_NEST_MIN_DEPTH, self.spider_nest_top(x))
+            column = grid[lx]
+            for y in range(max(0, nest_top), WORLD_H):
+                if column[y] != tiles.STONE:
+                    continue
+                if self.hash2(x, y, 432) < SPIDER_BG_WEB_CHANCE:
+                    column[y] = tiles.WEBBING
+
+    def _scatter_pebbles(self, grid: list, start: int, surfs: list, flooded_cols: list) -> None:
+        PEBBLE_CHANCE = 0.05
+        pebbles = {}
+        for lx in range(CHUNK_W):
+            if flooded_cols[lx]:
+                continue
+            y = surfs[lx] - 1
+            if y < 0 or y >= WORLD_H or grid[lx][y] != tiles.SKY:
+                continue
+            x = wrap_x(start + lx)
+            if self.hash2(x, y, 299) < PEBBLE_CHANCE:
+                offset = 0 if self.hash2(x, y, 301) < 0.5 else 1
+                pebbles[(x, y)] = offset
+        return pebbles
 
 
 class World:
@@ -305,6 +408,10 @@ class World:
         self.burning: dict = {}
         #: ``(layer, x, y) -> ticks a grass block has been covered``.
         self.grass_covered: dict = {}
+        #: ``(x, y) -> pixel offset`` for decorative ground pebbles.
+        self.pebbles: dict = {}
+        #: ``(layer, x, y) -> spider state`` for active spider mobs.
+        self.spiders: dict = {}
 
     def chunk(self, layer: int, index: int) -> list:
         key = (layer, index)
