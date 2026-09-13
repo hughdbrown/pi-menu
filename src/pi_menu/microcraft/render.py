@@ -20,8 +20,12 @@ from ..display.protocol import HEIGHT, WIDTH
 from . import palette, tiles
 from .canvas import Canvas
 from .inventory import (
+    ARMOR,
     BACKPACK,
     CRAFT,
+    FURNACE_FUEL,
+    FURNACE_ITEM,
+    FURNACE_OUTPUT,
     HOTBAR,
     INV_COLS,
     INV_ROWS,
@@ -30,6 +34,7 @@ from .inventory import (
     TABLE_OUTPUT,
     Inventory,
 )
+from .furnace import Furnace
 from .player import BLOCK, COLS, PLAYER_COLOUR, ROWS, Breaker, Drops, Player
 from .sky import draw_sky
 from .terrain import BACK, FRONT, World
@@ -206,6 +211,7 @@ def draw_world(
     inventory: Optional[Inventory] = None,
     drops: Optional[Drops] = None,
     active_layer: int = FRONT,
+    item_strip: Optional[ItemStrip] = None,
 ) -> None:
     """The whole scene. With no player this is the opening screen's demo."""
     draw_sky(canvas, sky_frac, moon_phase, stars, now_ms / 1000.0, weather.celestial_visibility)
@@ -224,6 +230,8 @@ def draw_world(
             draw_drops(canvas, drops, cam_x, cam_y, now_ms)
         if inventory is not None:
             draw_hotbar(canvas, inventory, now_ms)
+        if item_strip is not None:
+            item_strip.draw(canvas)
     weather.draw_flash(canvas)
 
 
@@ -270,7 +278,7 @@ def draw_inventory(canvas: Canvas, inventory: Inventory, now_ms: float) -> None:
     blink = blinking(now_ms)
     canvas.fill(BLACK)
     for i in range(4):
-        slot_tile(canvas, i * 2, 0)
+        _slot(canvas, inventory, ARMOR, i, i * 2, 0, blink)
     for i in range(2):
         ui_tile(canvas, tiles.UI_BG_X, 8 + i * 2, 0)
     canvas.tile(palette.CRAFT_BUTTON, 0, 0, 12, 0)
@@ -327,6 +335,137 @@ def draw_bench(canvas: Canvas, inventory: Inventory, now_ms: float) -> None:
 
 def draw_table(canvas: Canvas, inventory: Inventory, now_ms: float) -> None:
     _crafting_screen(canvas, inventory, now_ms, TABLE, 3, 1, 0, TABLE_OUTPUT, 9, inventory.table_recipe)
+
+
+def draw_furnace(canvas: Canvas, inventory: Inventory, furnace: Furnace, now_ms: float) -> None:
+    """Fuel, input, output, oxygen button, heat/progress bars, backpack, hotbar."""
+    blink = blinking(now_ms)
+    canvas.fill(BLACK)
+    for row in range(8):
+        for col in range(8):
+            ui_tile(canvas, tiles.UI_BG_X, col * 2, row * 2)
+
+    _slot(canvas, inventory, "furnaceFuel", 0, 0, 2, blink)
+    _slot(canvas, inventory, "furnaceItem", 0, 4, 2, blink)
+    _slot(canvas, inventory, "furnaceOutput", 0, 8, 2, blink)
+
+    # oxygen button at (12,2), alternating tile-like flip
+    canvas.tile(palette.FURNACE_OXYGEN_BUTTON, 0, 0, 12, 2)
+
+    # heat bar: 0-10 mapped to a small row of pixels under the input
+    heat_pixels = min(6, max(0, round(furnace.heat_fraction * 6)))
+    for i in range(6):
+        colour = palette.FURNACE_MOUTH if i < heat_pixels else palette.ROCK_DARK
+        canvas.set(4 + i, 5, colour)
+
+    # progress bar: 4 stages shown as a 4x2 overlay from the sheet
+    stage = min(3, math.floor(furnace.progress_fraction * 4))
+    canvas.tile(palette.FURNACE_PROGRESS_SHEET, 0, stage * 2, 4, 7)
+
+    ui_tile(canvas, tiles.UI_EXIT_X, 14, 0)
+    count = _held_count(inventory)
+    _quantity_dots(canvas, 12, 2, 4, count)
+    _backpack_and_hotbar(canvas, inventory, 6, blink)
+
+
+# -- item name strip ----------------------------------------------------------
+
+# A tiny 3x5 pixel font for the item-name strip. Each character is a tuple
+# of five rows, three columns, 1 = lit.
+FONT_3X5 = {
+    "A": (0b010, 0b101, 0b111, 0b101, 0b101),
+    "B": (0b110, 0b101, 0b110, 0b101, 0b110),
+    "C": (0b011, 0b100, 0b100, 0b100, 0b011),
+    "D": (0b110, 0b101, 0b101, 0b101, 0b110),
+    "E": (0b111, 0b100, 0b110, 0b100, 0b111),
+    "F": (0b111, 0b100, 0b110, 0b100, 0b100),
+    "G": (0b011, 0b100, 0b101, 0b101, 0b011),
+    "H": (0b101, 0b101, 0b111, 0b101, 0b101),
+    "I": (0b111, 0b010, 0b010, 0b010, 0b111),
+    "J": (0b001, 0b001, 0b001, 0b101, 0b010),
+    "K": (0b101, 0b101, 0b110, 0b101, 0b101),
+    "L": (0b100, 0b100, 0b100, 0b100, 0b111),
+    "M": (0b101, 0b111, 0b111, 0b101, 0b101),
+    "N": (0b101, 0b111, 0b111, 0b111, 0b101),
+    "O": (0b010, 0b101, 0b101, 0b101, 0b010),
+    "P": (0b110, 0b101, 0b110, 0b100, 0b100),
+    "Q": (0b010, 0b101, 0b101, 0b111, 0b011),
+    "R": (0b110, 0b101, 0b110, 0b101, 0b101),
+    "S": (0b011, 0b100, 0b010, 0b001, 0b110),
+    "T": (0b111, 0b010, 0b010, 0b010, 0b010),
+    "U": (0b101, 0b101, 0b101, 0b101, 0b111),
+    "V": (0b101, 0b101, 0b101, 0b101, 0b010),
+    "W": (0b101, 0b101, 0b111, 0b111, 0b101),
+    "X": (0b101, 0b101, 0b010, 0b101, 0b101),
+    "Y": (0b101, 0b101, 0b010, 0b010, 0b010),
+    "Z": (0b111, 0b001, 0b010, 0b100, 0b111),
+    "0": (0b010, 0b101, 0b101, 0b101, 0b010),
+    "1": (0b010, 0b110, 0b010, 0b010, 0b111),
+    "2": (0b110, 0b001, 0b010, 0b100, 0b111),
+    "3": (0b110, 0b001, 0b010, 0b001, 0b110),
+    "4": (0b101, 0b101, 0b111, 0b001, 0b001),
+    "5": (0b111, 0b100, 0b110, 0b001, 0b110),
+    "6": (0b011, 0b100, 0b110, 0b101, 0b010),
+    "7": (0b111, 0b001, 0b010, 0b010, 0b010),
+    "8": (0b010, 0b101, 0b010, 0b101, 0b010),
+    "9": (0b010, 0b101, 0b011, 0b001, 0b110),
+    " ": (0b000, 0b000, 0b000, 0b000, 0b000),
+}
+GLYPH_W = 3
+GLYPH_H = 5
+GLYPH_ADVANCE = GLYPH_W + 1
+
+
+def _draw_pixel_text(canvas: Canvas, text: str, x: float, y: int, colour: Colour = WHITE) -> None:
+    cx = x
+    for ch in text.upper():
+        glyph = FONT_3X5.get(ch, FONT_3X5[" "])
+        px = round(cx)
+        for row in range(GLYPH_H):
+            for col in range(GLYPH_W):
+                if glyph[row] & (1 << (GLYPH_W - 1 - col)):
+                    if 0 <= px + col < VIEW:
+                        canvas.set(px + col, y + row, colour)
+        cx += GLYPH_ADVANCE
+
+
+class ItemStrip:
+    """A scrolling black-bar name strip, like the HTML's hold-I overlay."""
+
+    STRIP_H = 7
+    STRIP_Y = (VIEW - STRIP_H) // 2
+    TEXT_Y = STRIP_Y + (STRIP_H - GLYPH_H) // 2
+
+    def __init__(self) -> None:
+        self.label: Optional[str] = None
+        self.visible = False
+        self.scroll_x = float(VIEW)
+        self.speed = 0.0
+
+    def update(self, stack: Optional[object], dt_ms: float) -> None:
+        if stack is None:
+            self.visible = False
+            self.label = None
+            return
+        label = f"{tiles.NAMES[stack.kind]} x{stack.count}".upper()
+        if not self.visible or label != self.label:
+            self.label = label
+            self.visible = True
+            self.scroll_x = float(VIEW)
+            distance = VIEW + len(label) * GLYPH_ADVANCE - 1
+            duration_ms = max(3500, len(label) * 350)
+            self.speed = distance / duration_ms
+        else:
+            self.scroll_x -= self.speed * dt_ms
+            text_width = max(0, len(self.label) * GLYPH_ADVANCE - 1)
+            if self.scroll_x < -text_width:
+                self.scroll_x = float(VIEW)
+
+    def draw(self, canvas: Canvas) -> None:
+        if not self.visible or self.label is None:
+            return
+        canvas.rect(0, self.STRIP_Y, VIEW, self.STRIP_H, BLACK)
+        _draw_pixel_text(canvas, self.label, self.scroll_x, self.TEXT_Y, WHITE)
 
 
 def draw_cursor(canvas: Canvas, x: int, y: int) -> None:
