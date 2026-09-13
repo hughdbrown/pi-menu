@@ -34,6 +34,9 @@ SHEETS = (
     ("breakSheet", "BREAK_SHEET"),
     ("uiSheet", "UI_SHEET"),
     ("craftBtnImg", "CRAFT_BUTTON"),
+    ("furnaceProgressImg", "FURNACE_PROGRESS_SHEET"),
+    ("furnaceOxygenBtnImg", "FURNACE_OXYGEN_BUTTON"),
+    ("spiderSheet", "SPIDER_SHEET"),
 )
 
 HEADER = '''"""The MicroCraft art, one tuple per sheet.
