@@ -36,7 +36,7 @@ def test_grass_is_green_on_top_and_water_is_blue():
 
 def test_items_have_transparent_corners_but_blocks_do_not():
     sheet, sx, sy, _ = palette.tile_art(tiles.STICK)
-    assert sheet[sy][sx] is None  # the stick's top-left pixel is empty
+    assert sheet[sy][sx] in (None, (0, 0, 0))  # the stick's top-left pixel is empty
     sheet, sx, sy, _ = palette.tile_art(tiles.DIRT)
     assert all(sheet[sy + dy][sx + dx] is not None for dy in range(2) for dx in range(2))
 
@@ -97,6 +97,6 @@ def test_the_right_tool_speeds_its_own_blocks_and_nothing_else():
     assert tiles.break_time_ms(9999) == tiles.DEFAULT_BREAK_MS
 
 
-def test_the_ui_background_colour_is_the_sheet_s_grey_lifted_for_the_leds():
-    assert palette.UI_BG_COLOUR == palette.lift((156, 156, 156))
-    assert palette.UI_BG_COLOUR[0] > 156
+def test_the_ui_background_colour_is_the_sheet_s_grey():
+    assert palette.UI_BG_COLOUR == sprites.UI_SHEET[0][tiles.UI_BG_X]
+    assert palette.UI_BG_COLOUR == (156, 156, 156)

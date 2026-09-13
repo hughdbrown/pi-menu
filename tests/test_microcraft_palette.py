@@ -1,10 +1,6 @@
-"""Every tile lights up on the LEDs, and no two neighbours look alike."""
+"""The panel draws the HTML's own art, sheet for sheet."""
 
 from __future__ import annotations
-
-import itertools
-
-import pytest
 
 from pi_menu.microcraft import palette, sprites, tiles
 
@@ -14,68 +10,24 @@ def pattern(kind: int) -> tuple:
     return tuple(sheet[sy + dy][sx + dx] for dy in range(2) for dx in range(2))
 
 
-def distance(a: tuple, b: tuple) -> int:
-    """Summed channel difference over the four pixels; None counts as black."""
-    total = 0
-    for pa, pb in zip(a, b):
-        pa = pa or (0, 0, 0)
-        pb = pb or (0, 0, 0)
-        total += sum(abs(x - y) for x, y in zip(pa, pb))
-    return total
+def test_every_sheet_is_the_html_art_untouched():
+    assert palette.BLOCK_SHEET is sprites.BLOCK_SHEET
+    assert palette.ITEM_SHEET is sprites.ITEM_SHEET
+    assert palette.FLUID_SHEET is sprites.FLUID_SHEET
+    assert palette.UI_SHEET is sprites.UI_SHEET
+    assert palette.FIRE_SHEET is sprites.FIRE_SHEET
+    assert palette.BREAK_SHEET is sprites.BREAK_SHEET
+    assert palette.FURNACE_PROGRESS_SHEET is sprites.FURNACE_PROGRESS_SHEET
+    assert palette.FURNACE_OXYGEN_BUTTON is sprites.FURNACE_OXYGEN_BUTTON
+    assert palette.SPIDER_SHEET is sprites.SPIDER_SHEET
+    assert palette.CRAFT_BUTTON is sprites.CRAFT_BUTTON
 
 
-BLOCKS = sorted(tiles.SHEET_POS)
-ITEMS = sorted(tiles.ITEM_SHEET_POS)
-
-
-def test_every_block_is_bright_enough_to_read_on_the_panel():
-    for kind in BLOCKS:
-        lit = [p for p in pattern(kind) if p is not None]
-        brightest = max(max(p) for p in lit)
-        assert brightest >= 120, tiles.NAMES[kind]
-        # At most two of the four pixels may sit near the floor (coal flecks).
-        dark = sum(1 for p in lit if max(p) < palette.FLOOR)
-        assert dark <= 2, tiles.NAMES[kind]
-
-
-def test_every_item_has_a_lit_pixel_and_tools_keep_their_outline():
-    for kind in ITEMS:
-        pixels = pattern(kind)
-        assert any(p is not None and max(p) >= 120 for p in pixels), tiles.NAMES[kind]
-    # Tools and sticks are shapes on an empty-slot tile; ingots fill it.
-    for kind in tiles.TOOL_TYPES | {tiles.STICK}:
-        assert any(p is None for p in pattern(kind)), tiles.NAMES[kind]
-    assert all(p is not None for p in pattern(tiles.IRON))
-
-
-def test_no_two_blocks_share_a_look():
-    for a, b in itertools.combinations(BLOCKS, 2):
-        assert distance(pattern(a), pattern(b)) >= 150, (tiles.NAMES[a], tiles.NAMES[b])
-
-
-def test_the_stone_family_is_told_apart_by_more_than_a_shade():
-    family = (tiles.STONE, tiles.COBBLESTONE, tiles.COAL_ORE, tiles.IRON_ORE,
-              tiles.COPPER_ORE, tiles.FURNACE, tiles.CLAY)
-    for a, b in itertools.combinations(family, 2):
-        assert distance(pattern(a), pattern(b)) >= 200, (tiles.NAMES[a], tiles.NAMES[b])
-
-
-def test_grass_and_leaves_and_the_wood_family_stay_distinct():
-    assert distance(pattern(tiles.GRASS), pattern(tiles.LEAF)) >= 200
-    for a, b in itertools.combinations(
-        (tiles.DIRT, tiles.WOOD, tiles.WOOD_PLANKS, tiles.CRAFTING_TABLE, tiles.BRICK, tiles.SAND), 2
-    ):
-        assert distance(pattern(a), pattern(b)) >= 200, (tiles.NAMES[a], tiles.NAMES[b])
-
-
-def test_the_flow_tiles_thin_out_as_they_taper_and_mirror_for_the_left():
-    for down, one, two, three in (
-        (tiles.WATER_FLOW_DOWN, tiles.WATER_FLOW_R1, tiles.WATER_FLOW_R2, tiles.WATER_FLOW_R3),
-        (tiles.LAVA_FLOW_DOWN, tiles.LAVA_FLOW_R1, tiles.LAVA_FLOW_R2, tiles.LAVA_FLOW_R3),
-    ):
-        lit = [sum(1 for p in pattern(k) if p is not None) for k in (down, one, two, three)]
-        assert lit[0] == 4 and lit[0] > lit[1] > lit[2] > lit[3] >= 1
-    assert palette.tile_art(tiles.WATER_FLOW_L1)[3] is True
+def test_tile_art_addresses_every_block_and_item_inside_its_sheet():
+    for kind in list(tiles.SHEET_POS) + list(tiles.ITEM_SHEET_POS) + list(tiles.FLUID_SHEET_POS):
+        sheet, sx, sy, mirrored = palette.tile_art(kind)
+        assert 0 <= sy + 1 < len(sheet) and 0 <= sx + 1 < len(sheet[0]), kind
+        assert mirrored is (kind in tiles.MIRRORED_TILES)
     assert pattern(tiles.WATER_FLOW_L1) == pattern(tiles.WATER_FLOW_R1)  # same art, mirrored on draw
 
 
@@ -88,18 +40,18 @@ def test_lift_raises_the_floor_but_keeps_black_and_transparent():
     assert r > g > b
 
 
-def test_ui_and_fire_are_lifted_but_the_crack_stays_dark():
-    # The new HTML's UI sheet uses black as transparency for the empty slot;
-    # the red exit button tile is the first non-transparent pixel.
+def test_flat_colours_match_the_html_fill_styles():
+    assert palette.FUEL_FILL == (0xFF, 0x6C, 0x00)
+    assert palette.HEAT_FILL == (0xFF, 0x00, 0x00)
+    assert palette.BAR_BACKGROUND == (0x13, 0x13, 0x13)
     assert palette.UI_SHEET[0][tiles.UI_EXIT_X][0] == 255
-    assert palette.FIRE_SHEET[1][0] != sprites.FIRE_SHEET[1][0]
-    assert palette.BREAK_SHEET is sprites.BREAK_SHEET
 
 
-def test_average_colours_follow_the_panel_palette():
-    assert palette.AVERAGE_COLOUR[tiles.LAVA][0] == 255
-    assert palette.AVERAGE_COLOUR[tiles.WATER][2] == 255
-    assert max(palette.AVERAGE_COLOUR[tiles.STONE]) >= 100
+def test_average_colours_are_the_mean_of_the_html_tile():
+    assert palette.AVERAGE_COLOUR[tiles.LAVA][0] > 200
+    assert palette.AVERAGE_COLOUR[tiles.WATER][2] > 150
+    for kind in tiles.SHEET_POS:
+        assert len(palette.AVERAGE_COLOUR[kind]) == 3
 
 
 def test_every_empty_slot_is_solid_black():

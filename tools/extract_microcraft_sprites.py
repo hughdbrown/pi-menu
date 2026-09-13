@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regenerate ``pi_menu/microcraft/sprites.py`` from the MicroCraft HTML.
 
-The game's art lives in the HTML as five base64 PNGs. The panel wants
+The game's art lives in the HTML as ten base64 PNGs. The panel wants
 plain RGB, and the app should not decode PNGs at start-up or depend on
 Pillow at run time, so this reads them once and writes the pixels out as
 Python literals. Run it again if the HTML's art changes::
@@ -59,14 +59,20 @@ def decode(html: str, variable: str) -> Image.Image:
     return Image.open(io.BytesIO(base64.b64decode(match.group(1)))).convert("RGBA")
 
 
-def literal(image: Image.Image) -> str:
+#: Sheets the HTML bakes with pitch black as transparent (drawImage has no
+#: colour key, so it does this once at load); every other sheet keeps black.
+BLACK_IS_TRANSPARENT = {"furnaceProgressImg"}
+
+
+def literal(image: Image.Image, black_transparent: bool = False) -> str:
     width, height = image.size
     rows = []
     for y in range(height):
         cells = []
         for x in range(width):
             r, g, b, a = image.getpixel((x, y))
-            cells.append("None" if a == 0 else f"({r}, {g}, {b})")
+            clear = a == 0 or (black_transparent and (r, g, b) == (0, 0, 0))
+            cells.append("None" if clear else f"({r}, {g}, {b})")
         rows.append("    (" + ", ".join(cells) + ",),\n")
     return "(\n" + "".join(rows) + ")"
 
@@ -75,7 +81,7 @@ def main() -> int:
     html = HTML.read_text(encoding="utf-8")
     parts = [HEADER]
     for variable, name in SHEETS:
-        parts.append(f"{name} = {literal(decode(html, variable))}\n\n")
+        parts.append(f"{name} = {literal(decode(html, variable), variable in BLACK_IS_TRANSPARENT)}\n\n")
     OUT.write_text("".join(parts).rstrip("\n") + "\n", encoding="utf-8")
     print(f"wrote {OUT.relative_to(ROOT)}")
     return 0
